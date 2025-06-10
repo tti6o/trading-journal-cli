@@ -1,5 +1,5 @@
 {
-  "description": "Lightweight CLI tool for analyzing Binance trading records with weighted average cost PnL calculation, stablecoin normalization, and multi-currency analysis features",
+  "description": "Lightweight CLI tool for analyzing Binance trading records with weighted average cost PnL calculation | 轻量级币安交易记录分析CLI工具，支持加权平均成本法盈亏计算",
   "topics": [
     "binance",
     "trading", 
@@ -11,7 +11,8 @@
     "crypto-trading",
     "weighted-average-cost",
     "stablecoin",
-    "portfolio-analysis"
+    "portfolio-analysis",
+    "chinese"
   ],
   "homepage": "",
   "has_wiki": true,
