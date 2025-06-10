@@ -1,267 +1,173 @@
-# 交易日志 CLI 工具 (Trading Journal CLI)
+# Trading Journal CLI
 
-一个轻量级的命令行工具，专为希望通过终端快速分析币安交易记录的交易者设计。
+> **[中文版 README](README_CN.md)** | **English**
 
-## 🎯 核心功能
+A lightweight command-line tool for analyzing Binance trading records with intelligent PnL calculation, stablecoin normalization, and comprehensive multi-currency analysis.
 
-- **快速导入**: 支持币安Excel交易历史文件的一键导入（支持中英文列名）
-- **稳定币标准化**: 自动将FDUSD、USDC等稳定币统一为USDT处理，避免跨币种交易计算错误
-- **精确计算**: 使用加权平均成本法计算已实现盈亏
-- **币种分析**: 支持按币种查看详细的净盈亏分析
-- **智能分析**: 自动计算胜率、盈亏比等关键指标
-- **灵活筛选**: 支持按交易对、时间范围、交易方向筛选
-- **去重保护**: 自动识别并忽略重复的交易记录
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 📦 安装要求
+## ✨ Features
 
-- Python 3.8+
-- 必要的Python包（见 `requirements.txt`）
+### 🧮 **Smart PnL Calculation**
+- **Weighted Average Cost Method**: Accurate realized profit/loss calculation
+- **Real-time Cost Basis Tracking**: See how your average cost changes with each trade
+- **Detailed Trade Analysis**: View PnL calculation process for each transaction
 
-## 🚀 快速开始
+### 🏦 **Stablecoin Normalization**
+- **Automatic Conversion**: FDUSD, USDC, BUSD → USDT standardization
+- **Cross-Stablecoin Trading**: Handle trades bought with FDUSD but sold in USDT
+- **Unified Reporting**: All PnL displayed in USDT equivalent
 
-### 1. 安装依赖
+### 💱 **Multi-Currency Analysis**
+- **Per-Currency Reports**: Detailed analysis for individual cryptocurrencies
+- **Portfolio Overview**: Complete trading statistics across all assets
+- **Trade History Viewing**: Comprehensive transaction logs with cost basis
+
+### 📁 **File Format Support**
+- **Bilingual Excel Support**: Both English and Chinese Binance export formats
+- **Smart Column Mapping**: Automatic detection of column structure
+- **Error Handling**: Robust parsing with helpful error messages
+
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
+# 1. Clone the repository
+git clone https://github.com/tti6o/trading-journal-cli.git
+cd trading-journal-cli
+
+# 2. Install dependencies
 pip install -r requirements.txt
-```
 
-### 2. 初始化数据库
-
-首次使用时需要初始化数据库：
-
-```bash
+# 3. Initialize database
 python main.py init
 ```
 
-### 3. 导入交易数据
-
-将你的币安交易历史Excel文件放在项目根目录，然后导入：
+### Basic Usage
 
 ```bash
+# Import your Binance trading history
 python main.py import your_binance_trades.xlsx
-```
 
-**🔥 稳定币自动标准化**: 导入过程中会自动将 `XRPFDUSD` → `XRPUSDT`，`ETHUSDC` → `ETHUSDT` 等，确保计算准确性。
-
-### 4. 查看报告
-
-```bash
-# 生成汇总统计报告
+# View overall trading report
 python main.py report
 
-# 查看指定币种的详细净盈亏
-python main.py currency XRP
-
-# 列出所有已交易币种
-python main.py list-currencies
-```
-
-## 📊 详细用法
-
-### 命令概览
-
-| 命令 | 功能 | 示例 |
-|------|------|------|
-| `init` | 初始化数据库 | `python main.py init` |
-| `import <file>` | 导入Excel交易文件 | `python main.py import trades.xlsx` |
-| `report [选项]` | 显示汇总统计报告 | `python main.py report --symbol BTCUSDT` |
-| `currency <币种> [--details]` | 查看指定币种净盈亏 | `python main.py currency BTC` |
-| `list-currencies` | 列出所有已交易币种 | `python main.py list-currencies` |
-
-### 📈 汇总报告选项
-
-```bash
-# 查看所有历史交易汇总
-python main.py report
-
-# 查看指定交易对的报告
-python main.py report --symbol BTCUSDT
-
-# 查看最近N天的报告
-python main.py report --days 30
-```
-
-### 💰 币种分析功能
-
-```bash
-# 查看XRP的汇总净盈亏分析
-python main.py currency XRP
-
-# 查看XRP的所有交易记录详情（便于核对）
-python main.py currency XRP --details
-
-# 查看BTC的净盈亏分析
+# Analyze specific cryptocurrency
 python main.py currency BTC
 
-# 列出所有币种及其净盈亏
+# View detailed trade history with cost basis
+python main.py currency XRP --details
+
+# List all traded currencies
 python main.py list-currencies
 ```
 
-## 📋 Excel文件格式要求
+## 📋 Commands Reference
 
-支持币安导出的Excel文件，包含**中文**和**英文**列名：
+| Command | Description | Example |
+|---------|-------------|---------|
+| `init` | Initialize database | `python main.py init` |
+| `import <file>` | Import Excel trading records | `python main.py import trades.xlsx` |
+| `report` | Generate overall trading summary | `python main.py report` |
+| `currency <symbol>` | View currency-specific analysis | `python main.py currency BTC` |
+| `currency <symbol> --details` | Show detailed trade history | `python main.py currency ETH --details` |
+| `list-currencies` | List all traded currencies | `python main.py list-currencies` |
 
-### 英文列名（原版）
-- `Date(UTC)` - 交易时间
-- `Pair` - 交易对 (如 BTCUSDT)
-- `Side` - 买卖方向 (BUY/SELL)
-- `Price` - 成交价格
-- `Executed` - 成交数量
-- `Amount` - 成交金额
-- `Fee` - 手续费
+## 🏗️ Architecture
 
-### 中文列名（中国版）
-- `时间` - 交易时间
-- `交易对` - 交易对 (如 BTC/USDT)
-- `类型` - 买卖方向 (BUY/SELL)
-- `价格` - 成交价格
-- `数量` - 成交数量
-- `成交额` - 成交金额
-- `手续费` - 手续费
-- `手续费结算币种` - 手续费币种
+This project follows a clean 4-layer architecture:
 
-## 💡 稳定币标准化
-
-### 支持的稳定币
-自动标准化以下稳定币为 USDT：
-- FDUSD → USDT
-- USDC → USDT
-- BUSD → USDT
-- DAI → USDT
-
-### 好处
-- ✅ **解决跨稳定币交易问题**: 用FDUSD买入然后用USDT卖出，现在能正确计算盈亏
-- ✅ **统一计算基准**: 所有计算以USDT为基准，更加准确
-- ✅ **简化分析**: 减少交易对数量，分析更清晰
-
-### 示例
-```bash
-# 导入时会显示标准化信息
-📝 稳定币交易对标准化:
-   XRPFDUSD -> XRPUSDT
-   DOGEFDUSD -> DOGEUSDT
-   SOLFDUSD -> SOLUSDT
-   BTCFDUSD -> BTCUSDT
+```
+├── CLI Layer (main.py)           # Click-based command interface
+├── Business Logic (journal_core.py)  # Core trading logic
+├── Utilities (utilities.py)     # Calculations and formatting
+└── Data Access (database_setup.py)   # SQLite operations
 ```
 
-## 🧮 PnL计算方法
+## 📊 Sample Output
 
-本工具使用**加权平均成本法**计算已实现盈亏：
+### Currency Analysis with Cost Basis
+```
+====================================================================================================
+XRP All Trade Details (with Average Cost Calculation)
+====================================================================================================
+Total: 10 trades
 
-1. **买入时**: 更新持仓的加权平均成本
-2. **卖出时**: 基于当前平均成本计算实现盈亏
-3. **手续费**: 自动扣除交易手续费（稳定币手续费）
-4. **稳定币**: 所有稳定币按1:1兑换率处理
+No.  Date         Pair       Side  Quantity        Price      Amount       Fee       Avg Cost     PnL
+----------------------------------------------------------------------------------------------------
+1    2025-05-23   XRPUSDT    BUY   5037.1000      2.2953     11561.66     0         2.2953       -
+2    2025-05-23   XRPUSDT    BUY   1676.4000      2.2953     3847.84      0         2.2953       -
+...
+7    2025-06-08   XRPUSDT    SELL  3153.8000      2.2199     7001.12      0         2.2686       -153.51
+8    2025-06-08   XRPUSDT    SELL  1594.9000      2.2199     3540.52      0         2.2686       -77.63
+----------------------------------------------------------------------------------------------------
 
-这种方法符合主流交易所的计算标准，比FIFO方法更准确。
+📊 Trading Summary:
+  Buy Trades: 6  |  Sell Trades: 4
+  Total Bought: 9497.5000 XRP
+  Total Sold: 7123.1000 XRP
+  Current Holdings: 2374.4000 XRP
+  Current Average Cost: 2.2686 USDT/XRP
+  Position Value: 5386.50 USDT
+  Realized PnL: -235.75 USDT
+```
 
-## 🔧 测试与验证
+## 🔒 Privacy & Security
 
-运行测试脚本验证所有功能：
+- **✅ Local Processing**: All data processed locally, nothing uploaded
+- **✅ No API Keys**: No exchange API access required
+- **✅ Data Protection**: Comprehensive .gitignore prevents accidental data exposure
+- **✅ Sample Data Only**: Repository contains only test data
 
+## 📚 Documentation
+
+- **[Architecture Guide](project_docs/ARCHITECTURE.md)** - System design and structure
+- **[Core Logic](project_docs/CORE_LOGIC.md)** - PnL calculation methodology  
+- **[Usage Guide](project_docs/USAGE_GUIDE.md)** - Detailed usage instructions
+- **[Test Scripts](scripts/README.md)** - Validation and demo scripts
+
+## 🛠️ Development
+
+### Project Structure
+```
+trading-journal-cli/
+├── main.py                 # CLI entry point
+├── journal_core.py         # Business logic layer
+├── database_setup.py       # Data access layer
+├── utilities.py            # Utility functions
+├── requirements.txt        # Python dependencies
+├── sample_trades.xlsx      # Test data
+├── scripts/               # Test and demo scripts
+├── project_docs/          # Comprehensive documentation
+└── user_data/            # Your private trading data (gitignored)
+```
+
+### Running Tests
 ```bash
-# 运行综合功能测试
-python scripts/test_sample.py
-
-# 验证稳定币标准化功能
-python scripts/verify_stable_coins.py
-
-# 演示所有功能
+# Run all demo scripts
 python scripts/demo_all_features.py
 
-# 验证交易记录详情功能
-python scripts/verify_trade_details.py
+# Test with sample data
+python scripts/test_sample.py
+
+# Verify stablecoin normalization
+python scripts/verify_stable_coins.py
 ```
 
-## 📁 项目结构
+## 📄 License
 
-```
-trading_journal_cli/
-├── main.py                    # CLI入口
-├── journal_core.py            # 业务逻辑层
-├── database_setup.py          # 数据访问层
-├── utilities.py               # 工具函数层（含稳定币标准化）
-├── requirements.txt           # 依赖包
-├── data/                      # 数据库目录
-├── scripts/                   # 测试与验证脚本
-│   ├── test_sample.py         # 综合测试脚本
-│   ├── demo_all_features.py   # 功能演示脚本
-│   ├── verify_stable_coins.py # 稳定币验证脚本
-│   ├── verify_trade_details.py # 交易详情验证脚本
-│   └── README.md              # 脚本说明文档
-├── tests/                     # 单元测试目录
-└── project_docs/              # 项目文档
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📈 输出示例
+## 🤝 Contributing
 
-### 币种净盈亏分析
-```
-============================================================
-XRP 净盈亏分析报告
-============================================================
-交易概况:
-  总交易笔数:    8
-  买入交易:      6
-  卖出交易:      2
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-数量统计:
-  总买入数量:    9,497.5000 XRP
-  总卖出数量:    4,748.7000 XRP
-  当前持仓:      4,748.8000 XRP
+## ⚠️ Disclaimer
 
-金额统计 (USDT):
-  总买入金额:    21,545.79 USDT
-  总卖出金额:    10,541.64 USDT
-
-盈亏分析:
-  已实现盈亏:    -231.14 USDT
-  胜率:          0.00%
-  持仓成本价:    2.2686 USDT/XRP
-  持仓价值:      10,773.01 USDT
-============================================================
-```
-
-### 币种列表
-```
-📊 已交易币种列表:
-==================================================
-BTC      -  13笔交易 - 净盈亏:    2920.40 USDT
-DOGE     -   6笔交易 - 净盈亏:       0.00 USDT
-FDUSD    -   1笔交易 - 净盈亏:       0.00 USDT
-SOL      -   1笔交易 - 净盈亏:       0.00 USDT
-XRP      -   8笔交易 - 净盈亏:    -231.14 USDT
-```
-
-### 汇总报告
-```
-==================================================
-交易汇总统计 (从 2023-10-01 到 2023-10-27)
-==================================================
-总交易笔数:      29
-买入交易:        19
-卖出交易:        10
-
-=== 核心指标 ===
-总实现盈亏:      +2,689.26 USDT
-胜率:           60.00%
-盈亏比:         2.50 : 1
-
-=== 交易量统计 ===
-总买入量:       65,142.58 USDT
-总卖出量:       32,124.92 USDT
-总手续费:       23.45 USDT
-==================================================
-```
-
-## 🤝 贡献
-
-欢迎提交Issue和Pull Request来改进这个工具！
-
-## 📜 许可证
-
-MIT License
+This tool is for personal trading analysis only. Please ensure the security of your trading data and use at your own discretion.
 
 ---
 
-**注意**: 此工具仅用于分析历史交易数据，不提供任何投资建议。交易有风险，投资需谨慎。 
+**Made with ❤️ for crypto traders** 
