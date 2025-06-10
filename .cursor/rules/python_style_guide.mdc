@@ -1,0 +1,72 @@
+---
+description: 
+globs: *.py
+alwaysApply: false
+---
+# Python 代码规范指南
+
+本指南旨在统一项目中的 Python 代码风格，提高代码的可读性和可维护性。所有 Python 代码都应遵循本规范。本规范主要基于 [PEP 8](mdc:https:/peps.python.org/pep-0008)，并补充了一些项目特定的约定。
+
+## 1. 命名规范 (Naming Conventions)
+
+-   **变量:** 使用 `snake_case` (小写字母和下划线)，例如 `my_variable`。
+-   **函数:** 使用 `snake_case`，例如 `calculate_pnl()`。
+-   **常量:** 使用 `UPPER_SNAKE_CASE` (大写字母和下划线)，例如 `DEFAULT_THRESHOLD`。
+-   **类:** 使用 `PascalCase` (或称 `CapWords`)，例如 `TradeReport`。
+-   **模块:** 使用简短、全小写的名称，例如 `utilities.py`。
+-   **禁止:** 避免使用单字母变量名（除了在循环或推导式中的 `i`, `j`, `k` 等），除非其含义非常明确。避免使用 Python 内置关键字作为变量名。
+
+## 2. 代码布局 (Code Layout)
+
+-   **缩进:** 使用 4 个空格进行缩进，禁止使用 Tab。
+-   **行长:** 每行代码的最大长度不应超过 99 个字符。
+-   **空行:**
+    -   顶级函数和类定义之间使用两个空行。
+    -   类中的方法定义之间使用一个空行。
+    -   在函数内部，可以使用一个空行来分隔逻辑上独立的代码块。
+-   **导入 (Imports):**
+    -   导入语句应始终位于文件顶部，位于模块文档字符串和全局变量之后。
+    -   导入应按以下顺序分组，每组之间用一个空行隔开：
+        1.  标准库导入 (e.g., `os`, `sys`)
+        2.  第三方库导入 (e.g., `pandas`, `click`)
+        3.  本项目内部导入 (e.g., `from journal_core import ...`)
+    -   推荐使用绝对导入。
+
+## 3. 注释与文档字符串 (Comments and Docstrings)
+
+-   **注释:**
+    -   使用 `#` 开头，与代码至少有两个空格的间距。
+    -   注释应言简意赅，解释"为什么"这样做，而不是"在做什么"。代码本身应清晰地表达"在做什么"。
+-   **文档字符串 (Docstrings):**
+    -   所有公共模块、函数、类和方法都必须有文档字符串。
+    -   使用三引号 `"""Docstring goes here"""`。
+    -   对于函数，文档字符串应简要描述其功能、参数（Args）、返回值（Returns）和可能引发的异常（Raises）。推荐使用 Google 风格的文档字符串。
+
+**示例:**
+```python
+"""A brief summary of the module."""
+
+def my_function(arg1, arg2):
+    """
+    Summarizes the function's purpose.
+
+    Args:
+        arg1 (str): Description of the first argument.
+        arg2 (int): Description of the second argument.
+
+    Returns:
+        bool: Description of the return value.
+    """
+    # ... function body ...
+    return True
+```
+
+## 4. 编码实践 (Coding Practices)
+
+-   **类型提示 (Type Hinting):**
+    -   强烈推荐为所有新代码添加类型提示。
+    -   使用 Python 3.9+ 的标准类型提示语法（例如，`list[int]` 而不是 `List[int]`）。
+-   **异常处理:**
+    -   避免使用 `except:` 这样的裸异常捕获。应始终指定要捕获的具体异常类型，例如 `except ValueError:`。
+-   **推导式:** 优先使用列表/字典/集合推导式来创建简单的集合，而不是 `for` 循环。
+-   **f-string:** 优先使用 f-string (`f"hello {name}"`) 进行字符串格式化。
