@@ -5,4 +5,15 @@ click
 ccxt
 configparser
 # 定时任务调度
-apscheduler 
+apscheduler
+# 环境变量支持
+python-dotenv
+# 安全扫描
+safety
+pip-audit
+# 测试框架
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+# 进度条
+tqdm 
