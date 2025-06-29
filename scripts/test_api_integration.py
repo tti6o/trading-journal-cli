@@ -15,8 +15,8 @@ import os
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import journal_core
-import database_setup
+from core import journal as journal_core
+from core import database as database_setup
 
 
 def test_api_connection():

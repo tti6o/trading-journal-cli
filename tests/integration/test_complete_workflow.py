@@ -88,16 +88,20 @@ class TestCompleteWorkflow:
         try:
             database.init_db()
             
-            # 生成大量测试数据
+            # 生成大量测试数据（确保每条记录都是唯一的）
             large_dataset = []
             for i in range(1000):
+                # 使用更精确的时间戳和价格来确保唯一性
+                minute = i % 60
+                hour = (i // 60) % 24
+                day = (i // (60 * 24)) % 28 + 1
                 trade = {
-                    'utc_time': f'2024-01-{(i % 30) + 1:02d} 10:00:00',
+                    'utc_time': f'2024-01-{day:02d} {hour:02d}:{minute:02d}:00',
                     'symbol': 'BTCUSDT',
                     'side': 'BUY' if i % 2 == 0 else 'SELL',
-                    'price': 45000.0 + (i % 100),
+                    'price': 45000.0 + i,  # 每个交易都有不同的价格
                     'quantity': 0.1,
-                    'quote_quantity': (45000.0 + (i % 100)) * 0.1,
+                    'quote_quantity': (45000.0 + i) * 0.1,
                     'fee': 0.1,
                     'fee_currency': 'BNB',
                     'data_source': 'test'
@@ -222,6 +226,19 @@ class TestCompleteWorkflow:
             database.save_trades(sample_trade_data)
             
             # 获取所有交易
+            all_trades = database.get_trades()
+            
+            # 计算PnL (这会更新数据库中的pnl字段)
+            for symbol in ['BTCUSDT']:
+                symbol_trades = [t for t in all_trades if t['symbol'] == symbol]
+                if symbol_trades:
+                    pnl_results = utilities.calculate_realized_pnl_for_symbol(symbol_trades, symbol)
+                    for trade in symbol_trades:
+                        trade_key = trade.get('trade_id') or trade.get('id')
+                        if trade_key in pnl_results:
+                            database.update_trade_pnl(trade['trade_id'], pnl_results[trade_key])
+            
+            # 重新获取更新后的交易数据
             all_trades = database.get_trades()
             
             # 分析BTC币种

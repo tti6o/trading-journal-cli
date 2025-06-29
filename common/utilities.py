@@ -267,8 +267,8 @@ def calculate_realized_pnl_for_symbol(trades: list, symbol: str) -> dict:
         trade_key = trade.get('trade_id') or trade.get('id')
         if not trade_key:
             # 如果都没有，生成一个临时的key
-            import database_setup
-            trade_key = database_setup.generate_trade_id(trade)
+            from core import database
+            trade_key = database.generate_trade_id(trade)
         
         if trade['side'] == 'BUY':
             # 买入：更新加权平均成本
@@ -344,7 +344,8 @@ def calculate_currency_pnl(trades: list, base_currency: str) -> dict:
     total_pnl = sum(t.get('pnl', 0) or 0 for t in currency_trades)
     
     # 计算胜率（只考虑有PnL的卖出交易）
-    profitable_sells = sum(1 for t in sell_trades if t.get('pnl', 0) > 0)
+    # 先安全地处理PnL值，确保不是None
+    profitable_sells = sum(1 for t in sell_trades if (t.get('pnl') or 0) > 0)
     total_sells = len([t for t in sell_trades if t.get('pnl') is not None])
     win_rate = profitable_sells / total_sells if total_sells > 0 else 0.0
     

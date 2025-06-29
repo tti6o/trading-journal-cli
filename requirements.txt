@@ -17,3 +17,5 @@ pytest-cov>=4.0.0
 pytest-mock>=3.10.0
 # 进度条
 tqdm 
+# 安全更新
+pip>=25.0  # 修复安全漏洞 
