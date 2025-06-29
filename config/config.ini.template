@@ -1,6 +1,12 @@
+# 交易日志 CLI 工具配置文件
+# 复制此文件为 config.ini 并填入您的配置信息
+
 [binance]
-api_key = YOUR_BINANCE_API_KEY_HERE
-api_secret = YOUR_BINANCE_API_SECRET_HERE
+# 币安 API 配置
+api_key = your_binance_api_key_here
+api_secret = your_binance_api_secret_here
+# 是否使用测试网 (可选)
+testnet = false
 
 [exchange]
 name = binance
@@ -13,9 +19,65 @@ http_proxy = http://127.0.0.1:7890
 https_proxy = http://127.0.0.1:7890
 
 [scheduler]
-# 是否启用定时同步功能 (true/false)
+# 定时任务配置
 enabled = true
-# 同步间隔，单位：小时
+# 数据同步间隔 (小时)
 sync_interval_hours = 4
-# 首次同步或找不到上次同步记录时，同步过去多少天的数据
+# 首次同步获取的天数
 initial_sync_days = 30
+
+[technical_analysis]
+# 技术分析功能配置
+enabled = true
+# 技术分析执行间隔 (分钟)
+analysis_interval_minutes = 60
+# K线数据间隔 (1m, 5m, 15m, 1h, 4h, 1d)
+kline_interval = 1h
+# K线数据获取数量
+kline_limit = 200
+# 是否自动检测监控的交易对
+auto_detect_symbols = true
+# 手动指定监控的交易对 (逗号分隔)
+monitored_symbols = BTCUSDT,ETHUSDT,BNBUSDT
+# 信号触发的最少指标数量
+min_indicators = 3
+# 信号置信度阈值 (0-1)
+confidence_threshold = 0.6
+# 通知收件人邮箱 (逗号分隔)
+notification_recipients = your_email@example.com
+
+[indicators]
+# 技术指标配置 - 启用/禁用各种指标
+sma_enabled = true
+sma_weight = 1.0
+ema_enabled = true
+ema_weight = 1.0
+rsi_enabled = true
+rsi_weight = 1.2
+macd_enabled = true
+macd_weight = 1.1
+bollinger_enabled = true
+bollinger_weight = 1.0
+volume_sma_enabled = true
+volume_sma_weight = 0.8
+stoch_enabled = true
+stoch_weight = 1.0
+
+[email]
+# 邮件通知配置
+enabled = true
+# SMTP 服务器配置
+smtp_server = smtp.gmail.com
+smtp_port = 587
+use_tls = true
+# 发送邮箱账号
+username = your_email@gmail.com
+password = your_app_password_here
+# 发送者名称
+sender_name = 交易分析助手
+
+[logging]
+# 日志配置
+level = INFO
+file_enabled = true
+console_enabled = true

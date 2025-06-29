@@ -145,6 +145,33 @@ class ExchangeClient(ABC):
         pass
     
     @abstractmethod
+    def fetch_klines(
+        self,
+        symbol: str,
+        interval: str = '1h',
+        limit: int = 500,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        获取K线数据
+        
+        Args:
+            symbol: 交易对符号
+            interval: K线间隔 (1m, 5m, 15m, 1h, 4h, 1d等)
+            limit: 数据条数限制
+            start_time: 开始时间
+            end_time: 结束时间
+            
+        Returns:
+            List[Dict]: K线数据列表，每条包含 [timestamp, open, high, low, close, volume]
+            
+        Raises:
+            ExchangeAPIError: API 调用失败
+        """
+        pass
+    
+    @abstractmethod
     def _parse_timestamp(self, timestamp: Any) -> datetime:
         """
         解析交易所特定的时间戳格式为标准的 UTC datetime 对象。

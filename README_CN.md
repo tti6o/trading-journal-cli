@@ -12,12 +12,30 @@
 - **灵活筛选**: 支持按交易对、时间范围、交易方向筛选
 - **去重保护**: 自动识别并忽略重复的交易记录
 
-## 🚀 最新功能：币安 API 集成
+## 🚀 最新功能：技术分析与智能通知
 
-**🎉 v2.0 新增：自动数据同步功能！**
+**🎉 v3.0 新增：技术分析与通知功能！**
 
-现在支持直接从币安 API 获取交易记录，无需手动下载和导入 Excel 文件：
+在 API 集成的基础上，现在支持自动技术分析和邮件通知：
 
+### 📊 技术分析功能
+- ✅ **多指标分析**: 支持 MA、RSI、MACD、布林带、随机指标等
+- ✅ **智能信号**: 基于多指标综合判断生成买入/卖出信号  
+- ✅ **置信度评估**: 根据触发指标数量计算信号置信度
+- ✅ **灵活配置**: 支持自定义指标参数和权重
+
+### 📧 智能通知系统
+- ✅ **实时邮件**: 自动发送技术分析结果到指定邮箱
+- ✅ **精美模板**: HTML 格式邮件，包含图表和详细分析
+- ✅ **多收件人**: 支持同时发送给多个邮箱地址
+- ✅ **队列处理**: 后台线程处理，确保发送稳定性
+
+### ⏰ 自动化运行
+- ✅ **定时分析**: 集成到调度器，可定时执行技术分析
+- ✅ **智能监控**: 自动检测历史交易对并监控
+- ✅ **灵活间隔**: 支持分钟级分析间隔配置
+
+### 🚀 币安 API 集成 (v2.0)
 - ✅ **自动同步**: 一键同步最新交易记录
 - ✅ **智能去重**: 自动识别并跳过重复数据
 - ✅ **实时连接测试**: 验证 API 配置和网络状态
@@ -190,19 +208,30 @@ python scripts/verify_trade_details.py
 ```
 trading_journal_cli/
 ├── main.py                    # CLI入口
-├── journal_core.py            # 业务逻辑层
-├── database_setup.py          # 数据访问层
-├── utilities.py               # 工具函数层（含稳定币标准化）
+├── core/                      # 核心模块
+│   ├── journal.py             # 业务逻辑层
+│   └── database.py            # 数据访问层
+├── services/                  # 服务模块 (新增)
+│   ├── scheduler.py           # 定时任务调度器
+│   ├── technical_analysis.py  # 技术分析服务
+│   ├── notification.py        # 邮件通知服务
+│   └── signal_engine.py       # 信号引擎
+├── exchange_client/           # 交易所客户端
+│   ├── base.py                # 抽象基类
+│   ├── binance_client.py      # 币安客户端
+│   └── factory.py             # 客户端工厂
+├── common/                    # 通用模块
+│   ├── utilities.py           # 工具函数（含稳定币标准化）
+│   └── validators.py          # 数据验证
+├── config/                    # 配置文件
+│   └── config.ini.template    # 配置模板
 ├── requirements.txt           # 依赖包
 ├── data/                      # 数据库目录
 ├── scripts/                   # 测试与验证脚本
-│   ├── test_sample.py         # 综合测试脚本
-│   ├── demo_all_features.py   # 功能演示脚本
-│   ├── verify_stable_coins.py # 稳定币验证脚本
-│   ├── verify_trade_details.py # 交易详情验证脚本
-│   └── README.md              # 脚本说明文档
 ├── tests/                     # 单元测试目录
 └── project_docs/              # 项目文档
+    ├── TECHNICAL_ANALYSIS_GUIDE.md # 技术分析使用指南
+    └── ...                    # 其他文档
 ```
 
 ## 📈 输出示例
@@ -280,10 +309,84 @@ MIT License
 
 ## 🚀 快速开始
 
-### 1. 快速入门（推荐）
-python scripts/quick_start_api.py
+### 1. 安装依赖
 
-### 2. 或者手动配置
-python main.py api config  # 配置 API 密钥
-python main.py api test    # 测试连接
-python main.py api sync    # 同步数据
+```bash
+pip install -r requirements.txt
+```
+
+### 2. 配置设置
+
+```bash
+# 复制配置模板
+cp config/config.ini.template config/config.ini
+
+# 编辑配置文件，填入 API 密钥和邮箱信息
+```
+
+### 3. 初始化和测试
+
+```bash
+# 初始化数据库
+python main.py init
+
+# 配置 API 并测试
+python main.py api config
+python main.py api test
+
+# 测试技术分析组件
+python main.py technical test
+python main.py notification test
+```
+
+### 4. 使用功能
+
+```bash
+# 数据同步
+python main.py api sync
+
+# 执行技术分析
+python main.py technical run
+
+# 启动自动化调度器
+python main.py scheduler start
+```
+
+### 快速入门脚本
+```bash
+python scripts/quick_start_api.py
+```
+
+## 📖 详细文档
+
+- [技术分析功能使用指南](project_docs/TECHNICAL_ANALYSIS_GUIDE.md)
+- [项目架构文档](project_docs/ARCHITECTURE.md)  
+- [API 集成说明](project_docs/README_API_INTEGRATION.md)
+- [调度器使用指南](project_docs/README_SCHEDULER.md)
+
+## 🆕 新增命令
+
+### 技术分析命令
+```bash
+python main.py technical run              # 执行技术分析
+python main.py technical status           # 查看分析状态
+python main.py technical test             # 测试组件
+python main.py technical add-symbol BTCUSDT    # 添加监控交易对
+```
+
+### 通知功能命令  
+```bash
+python main.py notification test          # 测试邮件配置
+python main.py notification status        # 查看通知状态
+```
+
+### 扩展的调度器命令
+```bash
+python main.py scheduler start            # 启动调度器(含技术分析)
+python main.py scheduler status           # 查看状态
+```
+
+---
+
+📞 **技术支持**: 如遇问题，请查看日志文件或提交 Issue  
+⚠️ **免责声明**: 本工具仅用于技术分析参考，不构成投资建议

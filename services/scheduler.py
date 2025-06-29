@@ -19,6 +19,7 @@ from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 
 from core import journal as journal_core
 from core import database as database_setup
+from services.signal_engine import get_signal_engine
 
 # 配置日志
 logging.basicConfig(
@@ -48,6 +49,8 @@ class SchedulerService:
         self.enabled = False
         self.sync_interval_hours = 4
         self.initial_sync_days = 30
+        self.technical_analysis_enabled = False
+        self.technical_analysis_interval_minutes = 60
         
         # 加载配置
         self._load_config()
@@ -68,8 +71,15 @@ class SchedulerService:
                 self.sync_interval_hours = config.getint('scheduler', 'sync_interval_hours', fallback=4)
                 self.initial_sync_days = config.getint('scheduler', 'initial_sync_days', fallback=30)
             
+            # 读取技术分析调度配置
+            if config.has_section('technical_analysis'):
+                self.technical_analysis_enabled = config.getboolean('technical_analysis', 'enabled', fallback=False)
+                self.technical_analysis_interval_minutes = config.getint('technical_analysis', 'analysis_interval_minutes', fallback=60)
+            
             logger.info(f"调度器配置已加载: enabled={self.enabled}, "
-                       f"interval={self.sync_interval_hours}h, initial_days={self.initial_sync_days}")
+                       f"sync_interval={self.sync_interval_hours}h, initial_days={self.initial_sync_days}, "
+                       f"technical_analysis_enabled={self.technical_analysis_enabled}, "
+                       f"technical_analysis_interval={self.technical_analysis_interval_minutes}min")
                        
         except Exception as e:
             logger.warning(f"加载配置文件失败，使用默认配置: {e}")
@@ -143,6 +153,40 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"❌ 执行定时同步任务时发生异常: {e}")
     
+    def _do_technical_analysis(self) -> None:
+        """执行技术分析任务"""
+        try:
+            logger.info("🔍 开始执行技术分析任务...")
+            
+            # 获取信号引擎实例
+            signal_engine = get_signal_engine()
+            
+            if not signal_engine.enabled:
+                logger.warning("⚠️ 技术分析引擎未启用，跳过分析")
+                return
+            
+            # 执行技术分析
+            result = signal_engine.run_analysis()
+            
+            if result['success']:
+                logger.info(f"✅ 技术分析任务完成!")
+                logger.info(f"📊 分析交易对数量: {result['analyzed_symbols']}")
+                logger.info(f"🚨 发现信号数量: {result['signals_found']}")
+                logger.info(f"📧 通知发送状态: {'已发送' if result['notification_sent'] else '未发送'}")
+                
+                # 输出市场摘要
+                market_summary = result.get('market_summary', {})
+                if market_summary:
+                    logger.info(f"📈 市场情绪: {market_summary.get('market_sentiment', 'NEUTRAL')}")
+                    logger.info(f"📊 买入信号: {market_summary.get('buy_signals', 0)}")
+                    logger.info(f"📊 卖出信号: {market_summary.get('sell_signals', 0)}")
+                    logger.info(f"⭐ 高置信度信号: {market_summary.get('high_confidence_signals', 0)}")
+            else:
+                logger.error(f"❌ 技术分析任务失败: {result.get('error', '未知错误')}")
+                
+        except Exception as e:
+            logger.error(f"❌ 执行技术分析任务时发生异常: {e}")
+    
     def start(self) -> bool:
         """启动调度器服务"""
         if not self.enabled:
@@ -154,7 +198,7 @@ class SchedulerService:
             return False
         
         try:
-            # 添加定时任务
+            # 添加数据同步定时任务
             self.scheduler.add_job(
                 func=self._do_sync,
                 trigger=IntervalTrigger(hours=self.sync_interval_hours),
@@ -164,12 +208,28 @@ class SchedulerService:
                 max_instances=1  # 防止任务重叠执行
             )
             
+            # 添加技术分析定时任务
+            if self.technical_analysis_enabled:
+                self.scheduler.add_job(
+                    func=self._do_technical_analysis,
+                    trigger=IntervalTrigger(minutes=self.technical_analysis_interval_minutes),
+                    id='technical_analysis_job',
+                    name='定时技术分析',
+                    replace_existing=True,
+                    max_instances=1
+                )
+                logger.info(f"📊 技术分析定时任务已添加: 每 {self.technical_analysis_interval_minutes} 分钟执行一次")
+            
             # 启动调度器
             self.scheduler.start()
             
-            logger.info(f"🚀 定时同步服务已启动!")
-            logger.info(f"⏰ 同步间隔: 每 {self.sync_interval_hours} 小时")
-            logger.info(f"📅 下次同步时间: {datetime.now() + timedelta(hours=self.sync_interval_hours)}")
+            logger.info(f"🚀 定时服务已启动!")
+            logger.info(f"⏰ 数据同步间隔: 每 {self.sync_interval_hours} 小时")
+            logger.info(f"📅 下次数据同步时间: {datetime.now() + timedelta(hours=self.sync_interval_hours)}")
+            
+            if self.technical_analysis_enabled:
+                logger.info(f"🔍 技术分析间隔: 每 {self.technical_analysis_interval_minutes} 分钟")
+                logger.info(f"📊 下次技术分析时间: {datetime.now() + timedelta(minutes=self.technical_analysis_interval_minutes)}")
             
             return True
             
@@ -203,11 +263,21 @@ class SchedulerService:
             if sync_job:
                 next_run_time = sync_job.next_run_time
         
+        # 获取技术分析任务的下次运行时间
+        tech_analysis_next_run = None
+        if jobs:
+            tech_job = next((job for job in jobs if job.id == 'technical_analysis_job'), None)
+            if tech_job:
+                tech_analysis_next_run = tech_job.next_run_time
+        
         return {
             'running': self.scheduler.running,
             'enabled': self.enabled,
             'sync_interval_hours': self.sync_interval_hours,
-            'next_run_time': next_run_time.isoformat() if next_run_time else None,
+            'technical_analysis_enabled': self.technical_analysis_enabled,
+            'technical_analysis_interval_minutes': self.technical_analysis_interval_minutes,
+            'next_sync_time': next_run_time.isoformat() if next_run_time else None,
+            'next_technical_analysis_time': tech_analysis_next_run.isoformat() if tech_analysis_next_run else None,
             'jobs_count': len(jobs),
             'last_sync': database_setup.get_last_sync_timestamp()
         }

@@ -5,4 +5,13 @@ click
 ccxt
 configparser
 # 定时任务调度
-apscheduler 
+apscheduler
+
+# 技术分析依赖
+pandas-ta
+numpy
+# 通知服务依赖  
+smtplib
+email-validator
+# 数据获取增强
+requests 

@@ -34,11 +34,22 @@ def cli():
     - 同步特定交易对: python main.py api sync-symbol BTCUSDT
     - 配置 API 密钥: python main.py api config
     
-    ⏰ 定时同步功能 (新增):
+    ⏰ 定时同步功能:
     - 启动定时同步: python main.py scheduler start
     - 查看调度器状态: python main.py scheduler status
     - 立即触发同步: python main.py scheduler sync-now
     - 查看调度器配置: python main.py scheduler config
+    
+    🔍 技术分析功能 (新增):
+    - 执行技术分析: python main.py technical run
+    - 查看分析状态: python main.py technical status
+    - 测试分析组件: python main.py technical test
+    - 添加监控交易对: python main.py technical add-symbol BTCUSDT
+    - 移除监控交易对: python main.py technical remove-symbol BTCUSDT
+    
+    📧 通知功能 (新增):
+    - 测试邮件配置: python main.py notification test
+    - 查看通知状态: python main.py notification status
     
     📖 使用步骤:
     1. 首次使用: python main.py init (初始化数据库，如已存在会提示确认)
@@ -157,34 +168,7 @@ def show_symbols():
     else:
         click.echo("没有找到任何交易对。请先导入交易数据。")
 
-@cli.command()
-@click.option('--symbol', help='筛选特定交易对 (例如: BTCUSDT)')
-@click.option('--days', type=int, help='显示最近N天的数据')
-def report(symbol, days):
-    """
-    生成盈亏分析报告
-    
-    可选参数:
-    --symbol: 只显示指定交易对的数据
-    --days: 只显示最近N天的数据
-    """
-    try:
-        # 设置筛选条件
-        filters = {}
-        if symbol:
-            filters['symbol'] = symbol.upper()
-        if days:
-            filters['days'] = days
-            
-        result = journal_core.generate_pnl_report(filters)
-        
-        if result['success']:
-            click.echo(result['report'])
-        else:
-            click.echo(f"❌ 生成报告失败: {result['error']}")
-            
-    except Exception as e:
-        click.echo(f"❌ 生成报告时发生错误: {e}")
+
 
 @cli.command()
 @click.argument('symbol')
@@ -370,6 +354,197 @@ def setup_config():
         click.echo(f"❌ 创建配置文件失败: {e}")
 
 @cli.group()
+def technical():
+    """
+    技术分析和信号通知功能
+    """
+    pass
+
+@technical.command('run')
+@click.option('--verbose', '-v', is_flag=True, help='显示详细信息')
+def run_analysis(verbose):
+    """
+    执行技术分析
+    """
+    try:
+        from services.signal_engine import get_signal_engine
+        
+        click.echo("🔍 开始执行技术分析...")
+        signal_engine = get_signal_engine()
+        result = signal_engine.run_analysis()
+        
+        if result['success']:
+            click.echo("✅ 技术分析完成")
+            click.echo(f"📊 分析交易对: {result['analyzed_symbols']} 个")
+            click.echo(f"🚨 发现信号: {result['signals_found']} 个")
+            click.echo(f"📧 通知状态: {'已发送' if result['notification_sent'] else '未发送'}")
+            
+            # 显示市场摘要
+            market_summary = result.get('market_summary', {})
+            if market_summary:
+                click.echo(f"\n📈 市场摘要:")
+                click.echo(f"   市场情绪: {market_summary.get('market_sentiment', 'NEUTRAL')}")
+                click.echo(f"   买入信号: {market_summary.get('buy_signals', 0)}")
+                click.echo(f"   卖出信号: {market_summary.get('sell_signals', 0)}")
+                click.echo(f"   高置信度: {market_summary.get('high_confidence_signals', 0)}")
+            
+            # 显示详细信号
+            if verbose:
+                signals_detail = result.get('signals_detail', {})
+                if signals_detail:
+                    click.echo(f"\n🚨 详细信号:")
+                    for symbol, signals in signals_detail.items():
+                        for signal in signals:
+                            click.echo(f"   {symbol}: {signal.signal_type} - {signal.message} (置信度: {signal.confidence:.2f})")
+        else:
+            click.echo(f"❌ 技术分析失败: {result.get('error', '未知错误')}")
+            
+    except Exception as e:
+        click.echo(f"❌ 执行技术分析时发生错误: {e}")
+
+@technical.command('status')
+@click.option('--verbose', '-v', is_flag=True, help='显示详细信息')
+def tech_status(verbose):
+    """
+    查看技术分析状态
+    """
+    try:
+        from services.signal_engine import get_signal_engine
+        
+        signal_engine = get_signal_engine()
+        status = signal_engine.get_status()
+        
+        click.echo("📊 技术分析状态:")
+        click.echo("=" * 40)
+        click.echo(f"启用状态: {'✅ 已启用' if status['enabled'] else '❌ 未启用'}")
+        click.echo(f"监控交易对: {status['monitored_symbols_count']} 个")
+        click.echo(f"通知收件人: {status['notification_recipients_count']} 个")
+        click.echo(f"组件状态:")
+        click.echo(f"  - 市场分析器: {'✅' if status['market_analyzer_ready'] else '❌'}")
+        click.echo(f"  - 通知服务: {'✅' if status['notification_service_ready'] else '❌'}")
+        click.echo(f"  - 交易所客户端: {'✅' if status['exchange_client_ready'] else '❌'}")
+        
+        if verbose and status['monitored_symbols']:
+            click.echo(f"\n监控的交易对: {', '.join(status['monitored_symbols'])}")
+            
+    except Exception as e:
+        click.echo(f"❌ 获取技术分析状态失败: {e}")
+
+@technical.command('test')
+def test_components():
+    """
+    测试技术分析组件
+    """
+    try:
+        from services.signal_engine import get_signal_engine
+        
+        click.echo("🧪 测试技术分析组件...")
+        signal_engine = get_signal_engine()
+        test_results = signal_engine.test_components()
+        
+        for component, result in test_results.items():
+            status_icon = '✅' if result['success'] else '❌'
+            click.echo(f"{component}: {status_icon}")
+            if not result['success']:
+                click.echo(f"   错误: {result.get('error', '未知错误')}")
+                
+    except Exception as e:
+        click.echo(f"❌ 测试组件时发生错误: {e}")
+
+@technical.command('add-symbol')
+@click.argument('symbol')
+def add_monitored_symbol(symbol):
+    """
+    添加监控的交易对
+    
+    SYMBOL: 交易对符号 (如 BTCUSDT)
+    """
+    try:
+        from services.signal_engine import get_signal_engine
+        
+        symbol = symbol.upper()
+        signal_engine = get_signal_engine()
+        
+        if signal_engine.add_monitored_symbol(symbol):
+            click.echo(f"✅ 已添加监控交易对: {symbol}")
+        else:
+            click.echo(f"⚠️ 交易对 {symbol} 已在监控列表中")
+            
+    except Exception as e:
+        click.echo(f"❌ 添加监控交易对失败: {e}")
+
+@technical.command('remove-symbol')
+@click.argument('symbol')
+def remove_monitored_symbol(symbol):
+    """
+    移除监控的交易对
+    
+    SYMBOL: 交易对符号 (如 BTCUSDT)
+    """
+    try:
+        from services.signal_engine import get_signal_engine
+        
+        symbol = symbol.upper()
+        signal_engine = get_signal_engine()
+        
+        if signal_engine.remove_monitored_symbol(symbol):
+            click.echo(f"✅ 已移除监控交易对: {symbol}")
+        else:
+            click.echo(f"⚠️ 交易对 {symbol} 不在监控列表中")
+            
+    except Exception as e:
+        click.echo(f"❌ 移除监控交易对失败: {e}")
+
+@cli.group()
+def notification():
+    """
+    邮件通知功能
+    """
+    pass
+
+@notification.command('test')
+def test_email():
+    """
+    测试邮件配置
+    """
+    try:
+        from services.notification import get_notification_service
+        
+        click.echo("📧 测试邮件配置...")
+        notification_service = get_notification_service()
+        result = notification_service.test_email_config()
+        
+        if result['success']:
+            click.echo("✅ 邮件配置测试成功")
+        else:
+            click.echo(f"❌ 邮件配置测试失败: {result['message']}")
+            
+    except Exception as e:
+        click.echo(f"❌ 测试邮件配置时发生错误: {e}")
+
+@notification.command('status')
+def notification_status():
+    """
+    查看通知服务状态
+    """
+    try:
+        from services.notification import get_notification_service
+        
+        notification_service = get_notification_service()
+        status = notification_service.get_status()
+        
+        click.echo("📧 通知服务状态:")
+        click.echo("=" * 30)
+        click.echo(f"启用状态: {'✅ 已启用' if status['enabled'] else '❌ 未启用'}")
+        click.echo(f"运行状态: {'✅ 运行中' if status['running'] else '❌ 已停止'}")
+        click.echo(f"队列大小: {status['queue_size']}")
+        click.echo(f"配置状态: {'✅ 已加载' if status['config_loaded'] else '❌ 未加载'}")
+        click.echo(f"工作线程: {'✅ 活跃' if status['worker_alive'] else '❌ 非活跃'}")
+        
+    except Exception as e:
+        click.echo(f"❌ 获取通知服务状态失败: {e}")
+
+@cli.group()
 def scheduler():
     """
     定时同步调度器管理
@@ -411,17 +586,28 @@ def scheduler_status():
         click.echo(f"启用状态: {'✅ 已启用' if status['enabled'] else '❌ 已禁用'}")
         
         if status['enabled']:
-            click.echo(f"同步间隔: {status['sync_interval_hours']} 小时")
+            click.echo(f"数据同步间隔: {status['sync_interval_hours']} 小时")
             
-            if status.get('next_run_time'):
-                next_run = datetime.fromisoformat(status['next_run_time'])
-                click.echo(f"下次同步: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+            if status.get('next_sync_time'):
+                next_run = datetime.fromisoformat(status['next_sync_time'])
+                click.echo(f"下次数据同步: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
             
             if status.get('last_sync'):
                 last_sync = datetime.fromisoformat(status['last_sync'])
-                click.echo(f"上次同步: {last_sync.strftime('%Y-%m-%d %H:%M:%S')}")
+                click.echo(f"上次数据同步: {last_sync.strftime('%Y-%m-%d %H:%M:%S')}")
             else:
-                click.echo("上次同步: 暂无记录")
+                click.echo("上次数据同步: 暂无记录")
+        
+        # 显示技术分析状态
+        tech_enabled = status.get('technical_analysis_enabled', False)
+        click.echo(f"技术分析: {'✅ 已启用' if tech_enabled else '❌ 未启用'}")
+        
+        if tech_enabled:
+            click.echo(f"技术分析间隔: {status.get('technical_analysis_interval_minutes', 60)} 分钟")
+            
+            if status.get('next_technical_analysis_time'):
+                next_tech = datetime.fromisoformat(status['next_technical_analysis_time'])
+                click.echo(f"下次技术分析: {next_tech.strftime('%Y-%m-%d %H:%M:%S')}")
         
         if status.get('error'):
             click.echo(f"错误信息: {status['error']}")

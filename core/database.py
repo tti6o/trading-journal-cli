@@ -10,14 +10,14 @@ import sqlite3
 import os
 import hashlib
 from datetime import datetime
-from typing import List
+from typing import List, Optional, Dict, Any
 
 # 数据库存储在data目录下，根据用户说明调整
 DB_PATH = "data/trading_journal.db"
 
 def init_db():
     """
-    创建数据库和 trades 表。
+    创建数据库和相关表。
     """
     # 确保data目录存在
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -25,7 +25,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # 使用 '''...''' 来写多行SQL语句，更清晰
+    # 创建交易记录表
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY,
@@ -43,6 +43,41 @@ def init_db():
         )
     ''')
     
+    # 创建K线数据表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS klines (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            interval TEXT NOT NULL,
+            open_time DATETIME NOT NULL,
+            close_time DATETIME NOT NULL,
+            open_price REAL NOT NULL,
+            high_price REAL NOT NULL,
+            low_price REAL NOT NULL,
+            close_price REAL NOT NULL,
+            volume REAL NOT NULL,
+            quote_volume REAL DEFAULT 0,
+            trades_count INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(symbol, interval, open_time)
+        )
+    ''')
+    
+    # 创建技术分析信号表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS technical_signals (
+            id INTEGER PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            signal_type TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            price REAL NOT NULL,
+            message TEXT NOT NULL,
+            indicators TEXT NOT NULL,
+            triggered_rules TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
     # 创建应用元数据表，用于存储应用级别的状态信息
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS sync_metadata (
@@ -52,10 +87,20 @@ def init_db():
         )
     ''')
     
-    # 创建索引以提高查询性能
+    # 创建交易记录的索引
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_utc_time ON trades(utc_time)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_side ON trades(side)')
+    
+    # 创建K线数据的索引
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_klines_symbol ON klines(symbol)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_klines_interval ON klines(interval)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_klines_time ON klines(open_time)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_klines_symbol_interval ON klines(symbol, interval)')
+    
+    # 创建技术信号的索引
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_signals_symbol ON technical_signals(symbol)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_signals_created_at ON technical_signals(created_at)')
     
     conn.commit()
     conn.close()
@@ -117,6 +162,185 @@ def save_trades(trades_data: list) -> tuple:
     
     print(f"数据访问层: 尝试插入 {initial_count} 条记录，成功插入 {inserted_rows} 条新记录，忽略 {ignored_rows} 条重复记录。")
     return (inserted_rows, ignored_rows)
+
+def save_klines(klines_data: List[Dict[str, Any]], symbol: str, interval: str) -> tuple:
+    """
+    保存K线数据到数据库
+    
+    Args:
+        klines_data: K线数据列表
+        symbol: 交易对符号
+        interval: K线间隔
+        
+    Returns:
+        (成功插入数量, 忽略数量)
+    """
+    if not klines_data:
+        return (0, 0)
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    initial_count = len(klines_data)
+    
+    # 准备数据
+    prepared_data = []
+    for kline in klines_data:
+        prepared_data.append((
+            symbol,
+            interval,
+            kline['open_time'],
+            kline['close_time'],
+            kline['open'],
+            kline['high'],
+            kline['low'],
+            kline['close'],
+            kline['volume'],
+            kline.get('quote_volume', 0),
+            kline.get('trades_count', 0)
+        ))
+    
+    # 使用 INSERT OR IGNORE 避免重复插入
+    cursor.executemany('''
+        INSERT OR IGNORE INTO klines 
+        (symbol, interval, open_time, close_time, open_price, high_price, low_price, close_price, volume, quote_volume, trades_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', prepared_data)
+    
+    conn.commit()
+    inserted_rows = cursor.rowcount
+    ignored_rows = initial_count - inserted_rows
+    conn.close()
+    
+    print(f"K线数据: 尝试插入 {initial_count} 条记录，成功插入 {inserted_rows} 条新记录，忽略 {ignored_rows} 条重复记录。")
+    return (inserted_rows, ignored_rows)
+
+def get_klines(symbol: str, interval: str, limit: int = 1000, start_time: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    """
+    获取K线数据
+    
+    Args:
+        symbol: 交易对符号
+        interval: K线间隔
+        limit: 数据条数限制
+        start_time: 开始时间
+        
+    Returns:
+        K线数据列表
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    sql = '''
+        SELECT symbol, interval, open_time, close_time, 
+               open_price, high_price, low_price, close_price, 
+               volume, quote_volume, trades_count
+        FROM klines 
+        WHERE symbol = ? AND interval = ?
+    '''
+    params = [symbol, interval]
+    
+    if start_time:
+        sql += ' AND open_time >= ?'
+        params.append(start_time)
+    
+    sql += ' ORDER BY open_time DESC LIMIT ?'
+    params.append(limit)
+    
+    cursor.execute(sql, params)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # 转换为字典列表
+    klines = []
+    for row in rows:
+        klines.append({
+            'symbol': row['symbol'],
+            'interval': row['interval'],
+            'open_time': row['open_time'],
+            'close_time': row['close_time'],
+            'open': row['open_price'],
+            'high': row['high_price'],
+            'low': row['low_price'],
+            'close': row['close_price'],
+            'volume': row['volume'],
+            'quote_volume': row['quote_volume'],
+            'trades_count': row['trades_count']
+        })
+    
+    return klines
+
+def save_technical_signal(signal_data: Dict[str, Any]) -> bool:
+    """
+    保存技术分析信号到数据库
+    
+    Args:
+        signal_data: 信号数据字典
+        
+    Returns:
+        是否保存成功
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO technical_signals 
+            (symbol, signal_type, confidence, price, message, indicators, triggered_rules)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            signal_data['symbol'],
+            signal_data['signal_type'],
+            signal_data['confidence'],
+            signal_data['price'],
+            signal_data['message'],
+            signal_data['indicators'],  # JSON字符串
+            signal_data['triggered_rules']  # JSON字符串
+        ))
+        
+        conn.commit()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        print(f"保存技术信号失败: {e}")
+        return False
+
+def get_technical_signals(symbol: Optional[str] = None, days: int = 7) -> List[Dict[str, Any]]:
+    """
+    获取技术分析信号记录
+    
+    Args:
+        symbol: 交易对符号，为None时获取所有
+        days: 获取最近几天的信号
+        
+    Returns:
+        信号记录列表
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    sql = '''
+        SELECT symbol, signal_type, confidence, price, message, 
+               indicators, triggered_rules, created_at
+        FROM technical_signals 
+        WHERE created_at >= datetime('now', '-{} days')
+    '''.format(days)
+    
+    params = []
+    if symbol:
+        sql += ' AND symbol = ?'
+        params.append(symbol)
+    
+    sql += ' ORDER BY created_at DESC'
+    
+    cursor.execute(sql, params)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in rows]
 
 def get_trades(since: str = None, symbol: str = None, side: str = None, limit: int = None) -> list:
     """
