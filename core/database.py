@@ -10,6 +10,7 @@ import sqlite3
 import os
 import hashlib
 from datetime import datetime
+from typing import List
 
 # 数据库存储在data目录下，根据用户说明调整
 DB_PATH = "data/trading_journal.db"
@@ -37,7 +38,17 @@ def init_db():
             quote_quantity REAL NOT NULL,
             fee REAL NOT NULL,
             fee_currency TEXT NOT NULL,
-            pnl REAL
+            pnl REAL,
+            data_source TEXT DEFAULT 'excel'
+        )
+    ''')
+    
+    # 创建应用元数据表，用于存储应用级别的状态信息
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sync_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
@@ -56,7 +67,9 @@ def generate_trade_id(trade_data: dict) -> str:
     为交易数据生成唯一的trade_id，用于去重。
     基于交易时间、交易对、价格、数量等生成SHA256哈希。
     """
-    key_string = f"{trade_data['utc_time']}-{trade_data['symbol']}-{trade_data['side']}-{trade_data['price']}-{trade_data['quantity']}"
+    # 使用更精确的时间戳和更多字段来生成唯一ID
+    key_string = f"{trade_data['utc_time']}-{trade_data['symbol']}-{trade_data['side']}-{trade_data['price']}-{trade_data['quantity']}-{trade_data.get('quote_quantity', 0)}"
+    print("generate_trade_id key_string: ", key_string)
     return hashlib.sha256(key_string.encode('utf-8')).hexdigest()[:16]
 
 def save_trades(trades_data: list) -> tuple:
@@ -86,13 +99,14 @@ def save_trades(trades_data: list) -> tuple:
             trade['quantity'],
             trade['quote_quantity'],
             trade['fee'],
-            trade['fee_currency']
+            trade['fee_currency'],
+            trade.get('data_source', 'excel')
         ))
 
     # executemany 效率远高于单条循环插入
     cursor.executemany('''
-        INSERT OR IGNORE INTO trades (trade_id, utc_time, symbol, side, price, quantity, quote_quantity, fee, fee_currency)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO trades (trade_id, utc_time, symbol, side, price, quantity, quote_quantity, fee, fee_currency, data_source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', prepared_data)
     
     conn.commit()
@@ -199,8 +213,8 @@ def insert_trade(trade_data: dict) -> bool:
     
     try:
         cursor.execute('''
-            INSERT INTO trades (trade_id, utc_time, symbol, side, price, quantity, quote_quantity, fee, fee_currency)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO trades (trade_id, utc_time, symbol, side, price, quantity, quote_quantity, fee, fee_currency, data_source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             trade_id,
             trade_data['utc_time'],
@@ -210,7 +224,8 @@ def insert_trade(trade_data: dict) -> bool:
             trade_data['quantity'],
             trade_data['quote_quantity'],
             trade_data['fee'],
-            trade_data['fee_currency']
+            trade_data['fee_currency'],
+            trade_data.get('data_source', 'excel')
         ))
         
         conn.commit()
@@ -259,23 +274,6 @@ def get_total_trade_count() -> int:
     conn.close()
     
     return count
-
-def update_trade_pnl(trade_id: int, pnl: float):
-    """
-    通过数据库ID更新指定交易的已实现盈亏。
-    
-    :param trade_id: 数据库中的交易ID
-    :param pnl: 已实现盈亏值
-    """
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        UPDATE trades SET pnl = ? WHERE id = ?
-    ''', (pnl, trade_id))
-    
-    conn.commit()
-    conn.close()
 
 def get_currency_pnl_summary():
     """
@@ -340,4 +338,98 @@ def get_trades_by_currency(currency: str):
         }
         trades.append(trade)
     
-    return trades 
+    return trades
+
+def get_historical_symbols() -> List[str]:
+    """
+    从数据库中获取历史交易对列表
+    
+    Returns:
+        历史上交易过的交易对符号列表
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        # 查询数据库中所有不同的交易对
+        cursor.execute("SELECT DISTINCT symbol FROM trades WHERE symbol IS NOT NULL")
+        symbols = [row[0] for row in cursor.fetchall()]
+        
+        return symbols
+        
+    except Exception as e:
+        print(f"获取历史交易对失败: {e}")
+        return []
+    finally:
+        conn.close()
+
+def set_metadata(key: str, value: str) -> bool:
+    """
+    设置应用元数据
+    
+    Args:
+        key: 元数据键
+        value: 元数据值
+        
+    Returns:
+        设置是否成功
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO sync_metadata (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        ''', (key, value))
+        
+        conn.commit()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        print(f"设置元数据失败 ({key}={value}): {e}")
+        return False
+
+def get_metadata(key: str) -> str:
+    """
+    获取应用元数据
+    
+    Args:
+        key: 元数据键
+        
+    Returns:
+        元数据值，如果不存在则返回None
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT value FROM sync_metadata WHERE key = ?', (key,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result[0] if result else None
+        
+    except Exception as e:
+        print(f"获取元数据失败 ({key}): {e}")
+        return None
+
+def get_last_sync_timestamp() -> str:
+    """
+    获取上次同步的时间戳
+    
+    Returns:
+        上次同步的ISO格式时间戳，如果没有记录则返回None
+    """
+    return get_metadata('last_sync_timestamp')
+
+def update_last_sync_timestamp() -> bool:
+    """
+    更新上次同步的时间戳为当前时间
+    
+    Returns:
+        更新是否成功
+    """
+    current_time = datetime.now().isoformat()
+    return set_metadata('last_sync_timestamp', current_time) 

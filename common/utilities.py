@@ -6,7 +6,7 @@
 - 例如：文件解析、数据格式转换、单个指标的计算等。
 """
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import re
 
 # 稳定币列表 - 这些币种将被视为等价
@@ -48,6 +48,51 @@ def normalize_currency_amount(amount: float, from_currency: str, to_currency: st
     
     # 如果不是稳定币转换，暂时返回原值
     return amount
+
+def convert_utc_to_local_time(utc_time_str: str) -> str:
+    """
+    将UTC时间转换为本地时间(CST)。
+    
+    用于API同步数据的时区转换，确保与Excel数据的时间格式一致。
+    
+    :param utc_time_str: UTC时间字符串
+    :return: CST本地时间字符串
+    """
+    try:
+        # 解析UTC时间
+        utc_dt = datetime.strptime(utc_time_str, '%Y-%m-%d %H:%M:%S')
+        
+        # 添加8小时转换为CST
+        cst_offset = timedelta(hours=8)
+        cst_dt = utc_dt + cst_offset
+        
+        return cst_dt.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception as e:
+        print(f"UTC到CST时间转换警告: {utc_time_str} -> {e}")
+        return utc_time_str
+
+def normalize_excel_time_to_utc(time_str: str) -> str:
+    """
+    将Excel中的UTC时间转换为本地时间(CST)。
+    
+    Excel中的时间是UTC时间，我们需要转换为本地时间(CST = UTC + 8小时)存储到数据库中。
+    
+    :param time_str: Excel中的UTC时间字符串
+    :return: 本地时间(CST)字符串
+    """
+    try:
+        # 解析UTC时间
+        utc_dt = pd.to_datetime(time_str)
+        
+        # 转换为本地时间(CST = UTC + 8小时)
+        cst_offset = timedelta(hours=8)
+        cst_dt = utc_dt + cst_offset
+        
+        return cst_dt.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception as e:
+        print(f"UTC到CST时间转换警告: {time_str} -> {e}")
+        # 如果转换失败，返回原始格式
+        return pd.to_datetime(time_str).strftime('%Y-%m-%d %H:%M:%S')
 
 def parse_binance_excel(file_path: str) -> list:
     """
@@ -138,7 +183,7 @@ def parse_binance_excel(file_path: str) -> list:
                 fee_currency = str(row.get('Fee_Currency', 'BNB')) if 'Fee_Currency' in df.columns else 'BNB'
                 
                 # 标准化时间格式
-                utc_time = pd.to_datetime(row['Date(UTC)']).strftime('%Y-%m-%d %H:%M:%S')
+                utc_time = normalize_excel_time_to_utc(row['Date(UTC)'])
                 
                 # 标准化交易方向
                 side = str(row['Side']).upper()
@@ -643,15 +688,15 @@ def format_trades_details(currency: str, trades: list) -> str:
         return f"❌ 未找到 {currency} 的交易记录"
     
     lines = []
-    lines.append("=" * 115)
+    lines.append("=" * 145)
     lines.append(f"{currency} 所有交易记录详情（含平均成本计算）")
-    lines.append("=" * 115)
+    lines.append("=" * 145)
     lines.append(f"总共 {len(trades)} 笔交易\n")
     
-    # 表头 - 精确调整列宽
-    header = f"{'序号':<4} {'日期':<12} {'交易对':<10} {'方向':<4} {'数量':>13} {'价格':>10} {'金额':>12} {'手续费':>10} {'平均成本':>10} {'盈亏':>12}"
+    # 表头 - 调整列宽以适应完整时间显示
+    header = f"{'序号':<4} {'时间':<19} {'交易对':<12} {'方向':<6} {'数量':>15} {'价格':>12} {'金额':>15} {'手续费':>12} {'平均成本':>12} {'盈亏':>15}"
     lines.append(header)
-    lines.append("-" * 115)
+    lines.append("-" * 145)
     
     # 重新计算平均成本和盈亏
     current_quantity = 0.0
@@ -661,7 +706,8 @@ def format_trades_details(currency: str, trades: list) -> str:
     sorted_trades = sorted(trades, key=lambda x: x.get('date', x.get('utc_time', '')))
     
     for i, trade in enumerate(sorted_trades, 1):
-        date_str = trade.get('date', trade.get('utc_time', 'N/A'))[:10] if trade.get('date') or trade.get('utc_time') else "N/A"
+        # 显示完整的时间信息（包含时分秒）
+        date_str = trade.get('date', trade.get('utc_time', 'N/A')) if trade.get('date') or trade.get('utc_time') else "N/A"
         symbol = trade['symbol']
         side = trade['side']
         quantity = trade['quantity']
@@ -710,10 +756,10 @@ def format_trades_details(currency: str, trades: list) -> str:
         fee_str = f"{fee:.4f}" if fee else "0"
         avg_cost_str = f"{average_cost:.4f}" if current_quantity > 0 or side == 'BUY' else "-"
         
-        row = f"{i:<4} {date_str:<12} {symbol:<10} {side:<4} {quantity_str:>13} {price_str:>10} {quote_qty_str:>12} {fee_str:>10} {avg_cost_str:>10} {pnl_str:>12}"
+        row = f"{i:<4} {date_str:<19} {symbol:<12} {side:<6} {quantity_str:>15} {price_str:>12} {quote_qty_str:>15} {fee_str:>12} {avg_cost_str:>12} {pnl_str:>15}"
         lines.append(row)
     
-    lines.append("-" * 115)
+    lines.append("-" * 145)
     
     # 添加汇总信息
     buy_trades = [t for t in trades if t['side'] == 'BUY']
@@ -742,6 +788,6 @@ def format_trades_details(currency: str, trades: list) -> str:
     lines.append("  - 平均成本：当前持仓的加权平均买入价格")
     lines.append("  - 盈亏计算：(卖出价格 - 平均成本) × 卖出数量 - 手续费")
     lines.append("  - 买入交易不产生已实现盈亏，只更新平均成本")
-    lines.append("=" * 115)
+    lines.append("=" * 145)
     
     return "\n".join(lines) 

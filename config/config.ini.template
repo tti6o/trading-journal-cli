@@ -1,0 +1,21 @@
+[binance]
+api_key = YOUR_BINANCE_API_KEY_HERE
+api_secret = YOUR_BINANCE_API_SECRET_HERE
+
+[exchange]
+name = binance
+sandbox = false
+rate_limit = true
+
+[proxy]
+enabled = true
+http_proxy = http://127.0.0.1:7890
+https_proxy = http://127.0.0.1:7890
+
+[scheduler]
+# 是否启用定时同步功能 (true/false)
+enabled = true
+# 同步间隔，单位：小时
+sync_interval_hours = 4
+# 首次同步或找不到上次同步记录时，同步过去多少天的数据
+initial_sync_days = 30

@@ -67,4 +67,20 @@ temp/
 
 # 备份文件
 *.bak
-*.backup 
+*.backup
+
+# 配置文件
+config/config.ini
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 数据文件
+data/*.db
+data/*.log
+
+# IDE 和系统文件
+.vscode/
+.idea/
+.DS_Store 
