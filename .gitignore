@@ -69,18 +69,35 @@ temp/
 *.bak
 *.backup
 
-# 配置文件
+# 配置文件 - 包含敏感信息
 config/config.ini
+config.ini
+*.ini
+!config/*.template
 
 # Python 缓存
 __pycache__/
 *.pyc
 
-# 数据文件
-data/*.db
-data/*.log
+# 数据文件和日志 - 可能包含敏感信息
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
 
 # IDE 和系统文件
 .vscode/
 .idea/
-.DS_Store 
+.DS_Store
+.python-version
+
+# 敏感信息
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+*.env.local
+*.env.production
+.secrets
