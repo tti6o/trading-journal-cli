@@ -13,6 +13,9 @@ from common import utilities
 from datetime import datetime
 import os
 import time
+from rich.console import Console
+from services.signal_engine import get_signal_engine
+import configparser
 
 # 这是一个使用 @click.group() 创建的主命令组
 # 后续的命令 (init, import, report) 都会注册到这个组里
@@ -49,6 +52,8 @@ def cli():
     
     📧 通知功能 (新增):
     - 测试邮件配置: python main.py notification test
+    - 发送测试邮件: python main.py notification test --send
+    - 指定收件人测试: python main.py notification test --send --recipient email@example.com
     - 查看通知状态: python main.py notification status
     
     📖 使用步骤:
@@ -64,7 +69,7 @@ def cli():
     - 可在 config.ini 中配置同步间隔和初始同步天数
     - 调度器在后台运行，不影响其他操作
     """
-    pass
+    utilities.setup_logging()
 
 @cli.command()
 @click.option('--force', is_flag=True, help='强制重新初始化，不提示确认')
@@ -361,46 +366,66 @@ def technical():
     pass
 
 @technical.command('run')
-@click.option('--verbose', '-v', is_flag=True, help='显示详细信息')
-def run_analysis(verbose):
-    """
-    执行技术分析
-    """
+@click.option('--symbols', default=None, help='指定要分析的交易对，多个交易对用逗号分隔')
+@click.option('--interval', default='1h', help='K线间隔，默认为1小时')
+@click.option('--limit', default=150, type=int, help='K线数量限制，默认为150')
+@click.pass_context
+def run_technical_analysis(ctx, symbols, interval, limit):
+    """执行一次技术分析并输出结果（不发送通知）"""
+    console = Console()
     try:
-        from services.signal_engine import get_signal_engine
-        
-        click.echo("🔍 开始执行技术分析...")
+        # 获取信号引擎实例
         signal_engine = get_signal_engine()
-        result = signal_engine.run_analysis()
         
-        if result['success']:
-            click.echo("✅ 技术分析完成")
-            click.echo(f"📊 分析交易对: {result['analyzed_symbols']} 个")
-            click.echo(f"🚨 发现信号: {result['signals_found']} 个")
-            click.echo(f"📧 通知状态: {'已发送' if result['notification_sent'] else '未发送'}")
-            
-            # 显示市场摘要
-            market_summary = result.get('market_summary', {})
-            if market_summary:
-                click.echo(f"\n📈 市场摘要:")
-                click.echo(f"   市场情绪: {market_summary.get('market_sentiment', 'NEUTRAL')}")
-                click.echo(f"   买入信号: {market_summary.get('buy_signals', 0)}")
-                click.echo(f"   卖出信号: {market_summary.get('sell_signals', 0)}")
-                click.echo(f"   高置信度: {market_summary.get('high_confidence_signals', 0)}")
-            
-            # 显示详细信号
-            if verbose:
-                signals_detail = result.get('signals_detail', {})
-                if signals_detail:
-                    click.echo(f"\n🚨 详细信号:")
-                    for symbol, signals in signals_detail.items():
-                        for signal in signals:
-                            click.echo(f"   {symbol}: {signal.signal_type} - {signal.message} (置信度: {signal.confidence:.2f})")
+        # 准备执行分析的配置覆盖
+        config_override = {
+            'symbols': symbols,
+            'kline_interval': interval,
+            'kline_limit': limit
+        }
+        
+        with console.status("[bold cyan]正在执行技术分析...[/]", spinner="dots"):
+            # 执行技术分析，但不发送通知
+            result = signal_engine.run_analysis(send_notification=False)
+
+        if not result['success']:
+            click.secho(f"技术分析失败: {result.get('error', '未知错误')}", fg='red')
         else:
-            click.echo(f"❌ 技术分析失败: {result.get('error', '未知错误')}")
-            
+            click.secho("✅ 技术分析完成", bold=True, fg='green')
+
     except Exception as e:
-        click.echo(f"❌ 执行技术分析时发生错误: {e}")
+        click.secho(f"执行技术分析时出错: {e}", fg='red')
+
+@technical.command('notify')
+@click.pass_context
+def run_and_notify(ctx):
+    """执行技术分析并将结果通过邮件发送"""
+    console = Console()
+    try:
+        signal_engine = get_signal_engine()
+
+        with console.status("[bold cyan]正在执行技术分析并准备发送通知...[/]", spinner="dots"):
+            result = signal_engine.run_analysis(send_notification=True)
+
+        if not result.get('success'):
+            click.secho(f"技术分析失败: {result.get('error', '未知错误')}", fg='red')
+            return
+
+        click.secho("✅ 分析完成!", bold=True, fg='green')
+        
+        signals_found = result.get('signals_found', 0)
+        notification_sent = result.get('notification_sent', False)
+
+        if signals_found > 0:
+            if notification_sent:
+                click.secho(f"📈 发现 {signals_found} 个信号，已成功发送邮件通知。", fg='green')
+            else:
+                click.secho(f"📈 发现 {signals_found} 个信号，但邮件通知发送失败或已禁用。", fg='yellow')
+        else:
+            click.secho("📉 本次分析未发现符合条件的交易信号，无需发送通知。", fg='cyan')
+
+    except Exception as e:
+        click.secho(f"执行技术分析和通知时出错: {e}", fg='red')
 
 @technical.command('status')
 @click.option('--verbose', '-v', is_flag=True, help='显示详细信息')
@@ -503,19 +528,37 @@ def notification():
     pass
 
 @notification.command('test')
-def test_email():
+@click.option('--send', is_flag=True, help='实际发送测试邮件（默认只测试连接）')
+@click.option('--recipient', default=None, help='测试邮件收件人（默认发送给配置的邮箱）')
+def test_email(send, recipient):
     """
     测试邮件配置
     """
     try:
         from services.notification import get_notification_service
         
-        click.echo("📧 测试邮件配置...")
         notification_service = get_notification_service()
+        
+        # 首先测试连接和认证
+        click.echo("📧 测试邮件配置...")
         result = notification_service.test_email_config()
         
         if result['success']:
             click.echo("✅ 邮件配置测试成功")
+            
+            # 如果指定了 --send 选项，则实际发送测试邮件
+            if send:
+                click.echo("\n📮 正在发送测试邮件...")
+                send_result = notification_service.send_test_email(recipient)
+                
+                if send_result['success']:
+                    click.echo(f"✅ 测试邮件发送成功到: {send_result['recipient']}")
+                    click.echo(f"📅 发送时间: {send_result['timestamp']}")
+                    click.echo("💡 请检查您的邮箱收件箱（可能在垃圾邮件文件夹中）")
+                else:
+                    click.echo(f"❌ 测试邮件发送失败: {send_result['message']}")
+            else:
+                click.echo("💡 使用 --send 选项可以实际发送测试邮件")
         else:
             click.echo(f"❌ 邮件配置测试失败: {result['message']}")
             
@@ -668,6 +711,12 @@ def scheduler_config():
         
     except Exception as e:
         click.echo(f"❌ 查看配置失败: {e}")
+
+def get_manager() -> journal_core.TradingJournalManager:
+    """获取交易日志管理器实例"""
+    config = configparser.ConfigParser()
+    config.read('config/config.ini', encoding='utf-8')
+    return journal_core.TradeJournalManager(config)
 
 if __name__ == '__main__':
     cli() 

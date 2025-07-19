@@ -29,6 +29,8 @@
 - ✅ **精美模板**: HTML 格式邮件，包含图表和详细分析
 - ✅ **多收件人**: 支持同时发送给多个邮箱地址
 - ✅ **队列处理**: 后台线程处理，确保发送稳定性
+- ✅ **连接测试**: 支持SMTP连接验证和实际邮件发送测试
+- ✅ **错误调试**: 详细的调试日志和错误处理机制
 
 ### ⏰ 自动化运行
 - ✅ **定时分析**: 集成到调度器，可定时执行技术分析
@@ -376,14 +378,52 @@ python main.py technical add-symbol BTCUSDT    # 添加监控交易对
 
 ### 通知功能命令  
 ```bash
-python main.py notification test          # 测试邮件配置
+python main.py notification test          # 测试邮件连接和认证
+python main.py notification test --send   # 实际发送测试邮件
+python main.py notification test --send --recipient email@example.com  # 指定收件人测试
 python main.py notification status        # 查看通知状态
+
+# 全面测试邮件功能
+python scripts/test_email_notification.py # 运行完整的邮件功能测试套件
 ```
 
 ### 扩展的调度器命令
 ```bash
 python main.py scheduler start            # 启动调度器(含技术分析)
 python main.py scheduler status           # 查看状态
+```
+
+---
+
+## 🚨 常见问题排查
+
+### 邮件通知问题
+
+如果遇到"邮件工作线程发生错误"的循环报错：
+
+```bash
+# 方法1: 快速修复（推荐）
+python scripts/quick_fix_email.py
+
+# 方法2: 详细诊断
+python scripts/fix_email_error.py
+
+# 方法3: 手动测试
+python main.py notification test --send
+```
+
+**QQ邮箱特别说明:**
+- 需要开启SMTP服务并获取授权码
+- 密码字段填写授权码，不是登录密码
+- 支持587端口(TLS)和465端口(SSL)
+
+**临时解决方案:**
+```bash
+# 禁用邮件服务避免循环错误
+python scripts/quick_fix_email.py
+
+# 修复后重新启用
+python scripts/quick_fix_email.py --enable
 ```
 
 ---

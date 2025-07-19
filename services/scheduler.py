@@ -21,16 +21,7 @@ from core import journal as journal_core
 from core import database as database_setup
 from services.signal_engine import get_signal_engine
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('data/scheduler.log', encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-
+# 现在日志由 main.py 统一配置
 logger = logging.getLogger(__name__)
 
 

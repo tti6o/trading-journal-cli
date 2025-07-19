@@ -11,9 +11,9 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Set
 import pandas as pd
 
-from .technical_analysis import MarketAnalyzer, TechnicalSignal
+from .technical_analysis import MarketAnalyzer, TechnicalSignal, analyze_market
 from .notification import get_notification_service
-from exchange_client.factory import get_client
+from exchange_client.factory import ExchangeClientFactory
 from core.database import get_historical_symbols
 
 logger = logging.getLogger(__name__)
@@ -60,8 +60,14 @@ class SignalEngine:
                 if symbols_str:
                     self.monitored_symbols = set(symbol.strip() for symbol in symbols_str.split(','))
                 
-                # 通知收件人
-                recipients_str = config.get('technical_analysis', 'notification_recipients', fallback='')
+                # 通知收件人 - 从email段读取
+                recipients_str = ''
+                if config.has_section('email'):
+                    recipients_str = config.get('email', 'notification_recipients', fallback='')
+                if not recipients_str and config.has_option('technical_analysis', 'notification_recipients'):
+                    # 向后兼容：如果email段没有，尝试从technical_analysis段读取
+                    recipients_str = config.get('technical_analysis', 'notification_recipients', fallback='')
+                
                 if recipients_str:
                     self.notification_recipients = [email.strip() for email in recipients_str.split(',')]
                 
@@ -71,6 +77,7 @@ class SignalEngine:
                     'kline_limit': config.getint('technical_analysis', 'kline_limit', fallback=200),
                     'analysis_enabled': config.getboolean('technical_analysis', 'analysis_enabled', fallback=True),
                     'auto_detect_symbols': config.getboolean('technical_analysis', 'auto_detect_symbols', fallback=True),
+                    'confidence_threshold': config.getfloat('technical_analysis', 'confidence_threshold', fallback=0.5),
                     'indicators': self._parse_indicators_config(config)
                 }
                 
@@ -85,15 +92,26 @@ class SignalEngine:
             self.enabled = False
     
     def _parse_indicators_config(self, config: configparser.ConfigParser) -> Dict[str, Any]:
-        """解析技术指标配置"""
+        """解析技术指标配置，适配新的技术分析模块"""
+        # 使用新的技术分析模块配置格式
         indicators_config = {
-            'sma': {'enabled': True, 'params': {'window': 20}, 'weight': 1.0},
-            'ema': {'enabled': True, 'params': {'window': 12}, 'weight': 1.0},
-            'rsi': {'enabled': True, 'params': {'window': 14}, 'weight': 1.2},
-            'macd': {'enabled': True, 'params': {'fast': 12, 'slow': 26, 'signal': 9}, 'weight': 1.1},
-            'bollinger': {'enabled': True, 'params': {'window': 20, 'std': 2}, 'weight': 1.0},
-            'volume_sma': {'enabled': True, 'params': {'window': 20}, 'weight': 0.8},
-            'stoch': {'enabled': True, 'params': {'k': 14, 'd': 3}, 'weight': 1.0}
+            'SMA_10': {'enabled': True, 'params': {'length': 10}},
+            'SMA_20': {'enabled': True, 'params': {'length': 20}},
+            'SMA_50': {'enabled': True, 'params': {'length': 50}},
+            'EMA_12': {'enabled': True, 'params': {'length': 12}},
+            'EMA_26': {'enabled': True, 'params': {'length': 26}},
+            'RSI_14': {'enabled': True, 'params': {'length': 14}},
+            'MACD': {'enabled': True, 'params': {'fast': 12, 'slow': 26, 'signal': 9}},
+            'BBANDS_20': {'enabled': True, 'params': {'length': 20, 'std': 2.0}},
+            'volume_SMA_20': {'enabled': True, 'params': {'length': 20}},
+        }
+        
+        signal_rules_config = {
+            'ma_cross': {'enabled': True, 'weight': 1.0},
+            'rsi_reversal': {'enabled': True, 'weight': 0.8},
+            'macd_cross': {'enabled': True, 'weight': 0.9},
+            'bollinger_bands': {'enabled': True, 'weight': 0.7},
+            'volume_confirmation': {'enabled': True, 'weight': 0.5},
         }
         
         # 从配置文件读取具体的指标设置
@@ -102,17 +120,20 @@ class SignalEngine:
                 for indicator in indicators_config:
                     if config.has_option('indicators', f'{indicator}_enabled'):
                         indicators_config[indicator]['enabled'] = config.getboolean('indicators', f'{indicator}_enabled')
-                    if config.has_option('indicators', f'{indicator}_weight'):
-                        indicators_config[indicator]['weight'] = config.getfloat('indicators', f'{indicator}_weight')
+                        
+            if config.has_section('signal_rules'):
+                for rule in signal_rules_config:
+                    if config.has_option('signal_rules', f'{rule}_enabled'):
+                        signal_rules_config[rule]['enabled'] = config.getboolean('signal_rules', f'{rule}_enabled')
+                    if config.has_option('signal_rules', f'{rule}_weight'):
+                        signal_rules_config[rule]['weight'] = config.getfloat('signal_rules', f'{rule}_weight')
+                        
         except Exception as e:
             logger.warning(f"解析指标配置失败，使用默认配置: {e}")
         
         return {
             'indicators': indicators_config,
-            'signal_rules': {
-                'min_indicators': config.getint('technical_analysis', 'min_indicators', fallback=3),
-                'confidence_threshold': config.getfloat('technical_analysis', 'confidence_threshold', fallback=0.6)
-            }
+            'signal_rules': signal_rules_config
         }
     
     def _initialize_components(self) -> None:
@@ -125,7 +146,11 @@ class SignalEngine:
             self.notification_service = get_notification_service()
             
             # 获取交易所客户端
-            self.exchange_client = get_client()
+            try:
+                self.exchange_client = ExchangeClientFactory.create_from_config('config/config.ini')
+            except Exception as e:
+                logger.warning(f"初始化交易所客户端失败: {e}")
+                self.exchange_client = None
             
             # 如果启用自动检测，补充历史交易对
             if self.config.get('auto_detect_symbols', False):
@@ -162,13 +187,18 @@ class SignalEngine:
         except Exception as e:
             logger.error(f"自动检测交易对失败: {e}")
     
-    def run_analysis(self) -> Dict[str, Any]:
+    def run_analysis(self, send_notification: bool = True) -> Dict[str, Any]:
         """
-        执行技术分析
-        
+        运行完整的技术分析流程
+
+        Args:
+            send_notification: 是否发送邮件通知，默认为 True
+
         Returns:
             分析结果字典
         """
+        logger.info("🚀 开始执行信号引擎分析...")
+
         if not self.enabled:
             return {'success': False, 'error': '信号引擎未启用'}
         
@@ -184,27 +214,72 @@ class SignalEngine:
             if not symbols_data:
                 return {'success': False, 'error': '未获取到K线数据'}
             
-            # 执行技术分析
-            signals_result = self.market_analyzer.analyze_symbols(symbols_data)
+            # 执行技术分析 - 使用新的API
+            signals_result = self.market_analyzer.analyze_market(symbols_data)
             
             # 生成市场摘要
             market_summary = self.market_analyzer.get_market_summary(signals_result)
             
-            # 处理信号通知
-            notification_result = self._process_signals(signals_result)
+            # 过滤非中性信号（MVP版本不使用置信度）
+            high_confidence_signals = [
+                signal for signal in signals_result.values() 
+                if signal.signal_type != 'NEUTRAL'
+            ]
             
+            # 准备要返回的详细信号列表（包含所有信号）
+            all_signals_detail = {}
+            for signal in signals_result.values():
+                if signal.signal_type != 'NEUTRAL':
+                    if signal.symbol not in all_signals_detail:
+                        all_signals_detail[signal.symbol] = []
+                    all_signals_detail[signal.symbol].append(signal)
+
+            # 处理信号通知
+            notification_result = self._process_signals(high_confidence_signals)
+            
+            # 6. 发送通知 (如果找到信号且需要发送)
+            notification_sent = False
+            
+            # MVP 版本只发送非中性信号
+            signals_to_notify = [
+                signal for signal in signals_result.values() 
+                if signal.signal_type != 'NEUTRAL'
+            ]
+
+            if send_notification and signals_to_notify and self.notification_service.enabled:
+                if not self.notification_recipients:
+                    logger.warning("未配置收件人邮箱，无法发送通知")
+                else:
+                    logger.info(f"发现 {len(signals_to_notify)} 个信号，准备发送通知给: {self.notification_recipients}")
+                    
+                    # 为每个收件人发送邮件
+                    for recipient in self.notification_recipients:
+                        if recipient:
+                            self.notification_service.send_signal_notification(
+                                signals=signals_to_notify,
+                                recipient=recipient
+                            )
+                    notification_sent = True
+            elif not send_notification:
+                logger.info("分析完成，但设置为不发送通知")
+            elif not signals_to_notify:
+                logger.info("分析完成，未发现需要通知的信号 (BUY/SELL)")
+            elif not self.notification_service.enabled:
+                logger.info("发现信号，但邮件通知服务未启用")
+
             result = {
                 'success': True,
                 'timestamp': datetime.now().isoformat(),
                 'analyzed_symbols': len(symbols_data),
-                'signals_found': sum(len(signals) for signals in signals_result.values()),
+                'signals_found': len(signals_to_notify),
+                'total_signals': len(signals_result),
                 'market_summary': market_summary,
-                'notification_sent': notification_result.get('sent', False),
-                'signals_detail': signals_result
+                'notification_sent': notification_sent,
+                'signals_detail': all_signals_detail # 使用新的键名并包含所有信号
             }
             
             logger.info(f"技术分析完成: 分析了 {result['analyzed_symbols']} 个交易对，"
-                       f"发现 {result['signals_found']} 个信号")
+                       f"发现 {len(all_signals_detail)} 个信号，其中 {result['signals_found']} 个为高置信度信号")
             
             return result
             
@@ -251,8 +326,11 @@ class SignalEngine:
                     df['volume'] = pd.to_numeric(df['volume'])
                     df['timestamp'] = pd.to_datetime(df['timestamp'])
                     
+                    # 设置时间戳为索引
+                    df = df.set_index('timestamp')
+                    
                     # 按时间排序
-                    df = df.sort_values('timestamp').reset_index(drop=True)
+                    df = df.sort_index()
                     
                     if len(df) >= 50:  # 至少需要50个数据点进行分析
                         symbols_data[symbol] = df
@@ -267,26 +345,18 @@ class SignalEngine:
         logger.info(f"成功获取 {len(symbols_data)} 个交易对的K线数据")
         return symbols_data
     
-    def _process_signals(self, signals_result: Dict[str, List[TechnicalSignal]]) -> Dict[str, Any]:
+    def _process_signals(self, signals: List[TechnicalSignal]) -> Dict[str, Any]:
         """
         处理信号并发送通知
         
         Args:
-            signals_result: 技术分析信号结果
+            signals: 技术分析信号列表
             
         Returns:
             处理结果字典
         """
-        if not signals_result:
+        if not signals:
             return {'sent': False, 'reason': '没有信号需要处理'}
-        
-        # 收集所有信号
-        all_signals = []
-        for symbol, signals in signals_result.items():
-            all_signals.extend(signals)
-        
-        if not all_signals:
-            return {'sent': False, 'reason': '没有有效信号'}
         
         # 发送通知
         if self.notification_recipients and self.notification_service:
@@ -294,7 +364,7 @@ class SignalEngine:
                 sent_count = 0
                 for recipient in self.notification_recipients:
                     success = self.notification_service.send_signal_notification(
-                        signals=all_signals,
+                        signals=signals,
                         recipient=recipient
                     )
                     if success:
@@ -304,7 +374,7 @@ class SignalEngine:
                     'sent': sent_count > 0,
                     'sent_count': sent_count,
                     'total_recipients': len(self.notification_recipients),
-                    'signals_count': len(all_signals)
+                    'signals_count': len(signals)
                 }
                 
             except Exception as e:
@@ -403,12 +473,11 @@ class SignalEngine:
         # 测试数据获取
         try:
             if self.monitored_symbols:
-                test_symbol = list(self.monitored_symbols)[0]
                 test_data = self._fetch_klines_data()
                 results['data_fetch'] = {
                     'success': len(test_data) > 0,
                     'symbols_count': len(test_data),
-                    'test_symbol': test_symbol
+                    'test_symbols': list(test_data.keys())[:3]  # 显示前3个测试交易对
                 }
             else:
                 results['data_fetch'] = {

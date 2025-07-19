@@ -27,7 +27,7 @@ sync_interval_hours = 4
 initial_sync_days = 30
 
 [technical_analysis]
-# 技术分析功能配置
+# 技术分析功能配置 (MVP版本 - 专注RSI指标)
 enabled = true
 # 技术分析执行间隔 (分钟)
 analysis_interval_minutes = 60
@@ -38,13 +38,17 @@ kline_limit = 200
 # 是否自动检测监控的交易对
 auto_detect_symbols = true
 # 手动指定监控的交易对 (逗号分隔)
-monitored_symbols = BTCUSDT,ETHUSDT,BNBUSDT
-# 信号触发的最少指标数量
-min_indicators = 3
-# 信号置信度阈值 (0-1)
-confidence_threshold = 0.6
+monitored_symbols = BTCUSDT,ETHUSDT,ADAUSDT,BNBUSDT,SOLUSDT,DOTUSDT,LINKUSDT,AVAXUSDT
 # 通知收件人邮箱 (逗号分隔)
-notification_recipients = your_email@example.com
+notification_recipients = your_email@example.com,trader@example.com
+
+[rsi]
+# RSI指标配置 (MVP核心指标)
+period = 14
+# 超卖阈值
+oversold = 30
+# 超买阈值
+overbought = 70
 
 [indicators]
 # 技术指标配置 - 启用/禁用各种指标
@@ -72,12 +76,36 @@ smtp_port = 587
 use_tls = true
 # 发送邮箱账号
 username = your_email@gmail.com
-password = your_app_password_here
+password = your_app_password
 # 发送者名称
-sender_name = 交易分析助手
+sender_name = 交易信号助手
 
 [logging]
-# 日志配置
+# 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 level = INFO
-file_enabled = true
-console_enabled = true
+# 是否启用文件日志
+file_log_enabled = true
+# 文件日志路径
+log_file_path = data/app.log
+
+[database]
+# 数据库配置
+db_path = data/trading_journal.db
+
+[signal_rules]
+# 信号规则配置
+# 移动平均交叉
+ma_cross_enabled = true
+ma_cross_weight = 1.0
+# RSI反转
+rsi_reversal_enabled = true
+rsi_reversal_weight = 0.8
+# MACD交叉
+macd_cross_enabled = true
+macd_cross_weight = 0.9
+# 布林带突破
+bollinger_bands_enabled = true
+bollinger_bands_weight = 0.7
+# 成交量确认
+volume_confirmation_enabled = true
+volume_confirmation_weight = 0.5

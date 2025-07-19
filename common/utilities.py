@@ -8,6 +8,12 @@
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 import re
+from rich.table import Table
+from rich.console import Console
+from rich.style import Style
+import logging
+import configparser
+import os
 
 # 稳定币列表 - 这些币种将被视为等价
 STABLE_COINS = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'DAI']
@@ -516,7 +522,51 @@ def format_ratio(ratio: float) -> str:
     else:
         return f"{ratio:.2f} : 1"
 
-def format_summary_report(stats: dict, time_range: str = None) -> str:
+def setup_logging():
+    """
+    根据配置文件设置全局日志记录器。
+    """
+    try:
+        config = configparser.ConfigParser()
+        # 确保能找到配置文件，即使从不同目录运行
+        config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.ini')
+        if not os.path.exists(config_path):
+            print(f"警告: 配置文件 {config_path} 未找到，将使用默认日志配置。")
+            logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            return
+
+        config.read(config_path, encoding='utf-8')
+
+        log_level_str = config.get('logging', 'level', fallback='INFO').upper()
+        log_level = getattr(logging, log_level_str, logging.INFO)
+        
+        file_log_enabled = config.getboolean('logging', 'file_log_enabled', fallback=True)
+        log_file_path = config.get('logging', 'log_file_path', fallback='data/app.log')
+
+        handlers = [logging.StreamHandler()] # 默认包含控制台输出
+        
+        if file_log_enabled:
+            # 确保日志目录存在
+            log_dir = os.path.dirname(log_file_path)
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+            handlers.append(logging.FileHandler(log_file_path, encoding='utf-8'))
+
+        # 配置根日志记录器
+        logging.basicConfig(
+            level=log_level,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=handlers
+        )
+        
+        logging.info(f"日志记录器已设置，级别为 {log_level_str}")
+
+    except Exception as e:
+        print(f"设置日志时发生错误: {e}")
+        # 如果出错，提供一个基础的配置
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+def format_summary_report(stats: dict, time_range: str = "所有时间") -> str:
     """
     格式化汇总报告输出。
     

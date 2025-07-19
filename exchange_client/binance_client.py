@@ -476,5 +476,67 @@ class BinanceClient(ExchangeClient):
         except (KeyError, ValueError, TypeError) as e:
             raise DataFormatError(f"数据格式转换失败: {str(e)}")
     
+    def fetch_klines(
+        self,
+        symbol: str,
+        interval: str = '1h',
+        limit: int = 500,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        获取K线数据
+        
+        Args:
+            symbol: 交易对符号
+            interval: K线间隔 (1m, 5m, 15m, 1h, 4h, 1d等)
+            limit: 数据条数限制
+            start_time: 开始时间
+            end_time: 结束时间
+            
+        Returns:
+            List[Dict]: K线数据列表，每条包含 [timestamp, open, high, low, close, volume]
+            
+        Raises:
+            ExchangeAPIError: API 调用失败
+        """
+        if not self.is_connected:
+            success, message = self.connect()
+            if not success:
+                raise ExchangeAPIError(f"无法连接到交易所: {message}")
+        
+        try:
+            # 转换时间参数
+            since = None
+            if start_time:
+                since = int(start_time.timestamp() * 1000)
+            
+            # 获取K线数据
+            klines = self.exchange.fetch_ohlcv(
+                symbol=self._format_symbol_for_market(symbol),
+                timeframe=interval,
+                since=since,
+                limit=limit
+            )
+            
+            # 转换为标准格式
+            result = []
+            for kline in klines:
+                # ccxt返回的格式: [timestamp, open, high, low, close, volume]
+                kline_data = {
+                    'timestamp': self._parse_timestamp(kline[0]),
+                    'open': float(kline[1]),
+                    'high': float(kline[2]),
+                    'low': float(kline[3]),
+                    'close': float(kline[4]),
+                    'volume': float(kline[5])
+                }
+                result.append(kline_data)
+            
+            return result
+            
+        except ccxt.BaseError as e:
+            raise ExchangeAPIError(f"获取K线数据失败: {str(e)}")
+    
     def __str__(self) -> str:
         return f"BinanceClient(connected={self.is_connected}, sandbox={self.sandbox})" 

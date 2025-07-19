@@ -1,380 +1,282 @@
 """
-技术分析服务模块
+RSI技术分析服务模块 (MVP版本)
 
-提供各种技术指标计算和信号识别功能。
-支持多种技术指标：MA, EMA, RSI, MACD, 布林带等。
+专注于RSI指标的技术分析，提供清晰、简洁的信号识别功能。
+设计理念：简单、高效、易于扩展。
 """
 
 import logging
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class TechnicalSignal:
-    """技术分析信号数据类"""
+    """技术分析信号数据类 (简化版)"""
     symbol: str
     timestamp: datetime
     signal_type: str  # 'BUY', 'SELL', 'NEUTRAL'
-    confidence: float  # 0-1 置信度
-    indicators: Dict[str, Any]  # 指标数值
-    triggered_rules: List[str]  # 触发的规则
-    price: float
-    message: str
+    price: float      # 信号产生时的价格
+    rsi_value: float  # RSI指标值
+    message: str      # 清晰、可读的分析报告
 
 
-@dataclass
-class IndicatorConfig:
-    """指标配置数据类"""
-    enabled: bool = True
-    params: Dict[str, Any] = field(default_factory=dict)
-    weight: float = 1.0  # 权重
-
-
-class TechnicalAnalyzer:
-    """技术分析器"""
+class RsiAnalyzer:
+    """
+    基于RSI指标的技术分析器 (MVP核心组件)
     
-    def __init__(self, config: Optional[Dict] = None):
+    功能：
+    - 计算RSI指标
+    - 识别超买/超卖信号
+    - 生成清晰的分析报告
+    """
+    
+    def __init__(self, rsi_period: int = 14, oversold: float = 30, overbought: float = 70):
         """
-        初始化技术分析器
+        初始化RSI分析器
         
         Args:
-            config: 分析器配置
+            rsi_period: RSI计算周期，默认14
+            oversold: 超卖阈值，默认30
+            overbought: 超买阈值，默认70
         """
-        self.config = config or self._get_default_config()
-        self.indicators_config = self.config.get('indicators', {})
-        
-    def _get_default_config(self) -> Dict:
-        """获取默认配置"""
-        return {
-            'indicators': {
-                'sma': {'enabled': True, 'params': {'window': 20}, 'weight': 1.0},
-                'ema': {'enabled': True, 'params': {'window': 12}, 'weight': 1.0},
-                'rsi': {'enabled': True, 'params': {'window': 14}, 'weight': 1.2},
-                'macd': {'enabled': True, 'params': {'fast': 12, 'slow': 26, 'signal': 9}, 'weight': 1.1},
-                'bollinger': {'enabled': True, 'params': {'window': 20, 'std': 2}, 'weight': 1.0},
-                'volume_sma': {'enabled': True, 'params': {'window': 20}, 'weight': 0.8},
-                'stoch': {'enabled': True, 'params': {'k': 14, 'd': 3}, 'weight': 1.0}
-            },
-            'signal_rules': {
-                'min_indicators': 3,  # 至少满足3个指标
-                'confidence_threshold': 0.6  # 置信度阈值
-            }
-        }
+        self.rsi_period = rsi_period
+        self.oversold = oversold
+        self.overbought = overbought
     
-    def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+    def analyze(self, symbol: str, ohlcv_df: pd.DataFrame) -> Optional[TechnicalSignal]:
         """
-        计算所有启用的技术指标
+        对给定的市场数据进行RSI分析
         
         Args:
-            df: K线数据DataFrame，包含 [timestamp, open, high, low, close, volume]
+            symbol: 交易对标识
+            ohlcv_df: 包含'close'价格的OHLCV数据
             
         Returns:
-            带有技术指标的DataFrame
+            TechnicalSignal: 分析结果，如果数据不足则返回None
         """
-        if df.empty:
-            return df
+        try:
+            # 1. 检查数据是否充足
+            if ohlcv_df.empty or len(ohlcv_df) < self.rsi_period + 10:
+                logger.warning(f"{symbol}: 数据不足，需要至少{self.rsi_period + 10}条记录")
+                return None
             
-        # 确保数据格式正确
-        df = df.copy()
-        required_columns = ['open', 'high', 'low', 'close', 'volume']
-        for col in required_columns:
-            if col not in df.columns:
-                raise ValueError(f"DataFrame缺少必需的列: {col}")
-        
-        # 计算各种技术指标
-        indicators = {}
-        
-        # 移动平均线
-        if self.indicators_config.get('sma', {}).get('enabled', False):
-            window = self.indicators_config['sma']['params']['window']
-            indicators['sma'] = ta.sma(df['close'], length=window)
-        
-        if self.indicators_config.get('ema', {}).get('enabled', False):
-            window = self.indicators_config['ema']['params']['window']
-            indicators['ema'] = ta.ema(df['close'], length=window)
-        
-        # RSI
-        if self.indicators_config.get('rsi', {}).get('enabled', False):
-            window = self.indicators_config['rsi']['params']['window']
-            indicators['rsi'] = ta.rsi(df['close'], length=window)
-        
-        # MACD
-        if self.indicators_config.get('macd', {}).get('enabled', False):
-            params = self.indicators_config['macd']['params']
-            macd_result = ta.macd(df['close'], 
-                                fast=params['fast'], 
-                                slow=params['slow'], 
-                                signal=params['signal'])
-            if macd_result is not None:
-                indicators['macd'] = macd_result.iloc[:, 0]  # MACD线
-                indicators['macd_signal'] = macd_result.iloc[:, 1]  # 信号线
-                indicators['macd_histogram'] = macd_result.iloc[:, 2]  # 柱状图
-        
-        # 布林带
-        if self.indicators_config.get('bollinger', {}).get('enabled', False):
-            params = self.indicators_config['bollinger']['params']
-            bb_result = ta.bbands(df['close'], 
-                                length=params['window'], 
-                                std=params['std'])
-            if bb_result is not None:
-                indicators['bb_upper'] = bb_result.iloc[:, 0]  # 上轨
-                indicators['bb_middle'] = bb_result.iloc[:, 1]  # 中轨
-                indicators['bb_lower'] = bb_result.iloc[:, 2]  # 下轨
-        
-        # 成交量移动平均
-        if self.indicators_config.get('volume_sma', {}).get('enabled', False):
-            window = self.indicators_config['volume_sma']['params']['window']
-            indicators['volume_sma'] = ta.sma(df['volume'], length=window)
-        
-        # 随机指标
-        if self.indicators_config.get('stoch', {}).get('enabled', False):
-            params = self.indicators_config['stoch']['params']
-            stoch_result = ta.stoch(df['high'], df['low'], df['close'], 
-                                  k=params['k'], d=params['d'])
-            if stoch_result is not None:
-                indicators['stoch_k'] = stoch_result.iloc[:, 0]  # %K
-                indicators['stoch_d'] = stoch_result.iloc[:, 1]  # %D
-        
-        # 将指标添加到DataFrame
-        for name, values in indicators.items():
-            df[name] = values
+            # 2. 计算RSI指标
+            rsi_series = ta.rsi(ohlcv_df['close'], length=self.rsi_period)
             
-        return df
-    
-    def analyze_signals(self, df: pd.DataFrame, symbol: str) -> List[TechnicalSignal]:
-        """
-        分析技术信号
-        
-        Args:
-            df: 带有技术指标的DataFrame
-            symbol: 交易对符号
+            if rsi_series.isna().all():
+                logger.warning(f"{symbol}: RSI计算失败")
+                return None
             
-        Returns:
-            技术信号列表
-        """
-        signals = []
-        
-        if df.empty or len(df) < 2:
-            return signals
-        
-        # 获取最新和前一个数据点
-        current = df.iloc[-1]
-        previous = df.iloc[-2]
-        
-        # 分析每个时间点的信号
-        signal_analysis = self._analyze_current_signals(current, previous, symbol)
-        
-        if signal_analysis:
-            signals.append(signal_analysis)
+            # 3. 获取最新的RSI值和价格
+            latest_rsi = rsi_series.iloc[-1]
+            latest_price = ohlcv_df['close'].iloc[-1]
+            latest_time = ohlcv_df.index[-1] if hasattr(ohlcv_df.index[-1], 'to_pydatetime') else datetime.now()
             
-        return signals
-    
-    def _analyze_current_signals(self, current: pd.Series, previous: pd.Series, symbol: str) -> Optional[TechnicalSignal]:
-        """
-        分析当前时间点的信号
-        
-        Args:
-            current: 当前数据点
-            previous: 前一个数据点
-            symbol: 交易对符号
+            # 处理时间戳
+            if hasattr(latest_time, 'to_pydatetime'):
+                latest_time = latest_time.to_pydatetime()
+            elif not isinstance(latest_time, datetime):
+                latest_time = datetime.now()
             
-        Returns:
-            技术信号或None
-        """
-        buy_signals = []
-        sell_signals = []
-        indicators_values = {}
-        
-        # 移动平均线信号
-        if 'sma' in current and 'ema' in current:
-            if not pd.isna(current['sma']) and not pd.isna(current['ema']):
-                indicators_values['sma'] = current['sma']
-                indicators_values['ema'] = current['ema']
-                
-                # 价格突破移动平均线
-                if current['close'] > current['sma'] and previous['close'] <= previous['sma']:
-                    buy_signals.append('价格突破SMA')
-                elif current['close'] < current['sma'] and previous['close'] >= previous['sma']:
-                    sell_signals.append('价格跌破SMA')
-                
-                # EMA与SMA交叉
-                if current['ema'] > current['sma'] and previous['ema'] <= previous['sma']:
-                    buy_signals.append('EMA上穿SMA')
-                elif current['ema'] < current['sma'] and previous['ema'] >= previous['sma']:
-                    sell_signals.append('EMA下穿SMA')
-        
-        # RSI信号
-        if 'rsi' in current and not pd.isna(current['rsi']):
-            indicators_values['rsi'] = current['rsi']
+            # 4. 判断信号类型和生成消息
+            signal_type, message = self._evaluate_rsi_signal(latest_rsi)
             
-            if current['rsi'] < 30:
-                buy_signals.append('RSI超卖')
-            elif current['rsi'] > 70:
-                sell_signals.append('RSI超买')
-        
-        # MACD信号
-        if 'macd' in current and 'macd_signal' in current:
-            if not pd.isna(current['macd']) and not pd.isna(current['macd_signal']):
-                indicators_values['macd'] = current['macd']
-                indicators_values['macd_signal'] = current['macd_signal']
-                
-                # MACD金叉死叉
-                if current['macd'] > current['macd_signal'] and previous['macd'] <= previous['macd_signal']:
-                    buy_signals.append('MACD金叉')
-                elif current['macd'] < current['macd_signal'] and previous['macd'] >= previous['macd_signal']:
-                    sell_signals.append('MACD死叉')
-        
-        # 布林带信号
-        if 'bb_upper' in current and 'bb_lower' in current:
-            if not pd.isna(current['bb_upper']) and not pd.isna(current['bb_lower']):
-                indicators_values['bb_upper'] = current['bb_upper']
-                indicators_values['bb_lower'] = current['bb_lower']
-                
-                # 价格触碰布林带
-                if current['close'] <= current['bb_lower']:
-                    buy_signals.append('价格触及布林带下轨')
-                elif current['close'] >= current['bb_upper']:
-                    sell_signals.append('价格触及布林带上轨')
-        
-        # 随机指标信号
-        if 'stoch_k' in current and 'stoch_d' in current:
-            if not pd.isna(current['stoch_k']) and not pd.isna(current['stoch_d']):
-                indicators_values['stoch_k'] = current['stoch_k']
-                indicators_values['stoch_d'] = current['stoch_d']
-                
-                # 随机指标超买超卖
-                if current['stoch_k'] < 20 and current['stoch_d'] < 20:
-                    buy_signals.append('随机指标超卖')
-                elif current['stoch_k'] > 80 and current['stoch_d'] > 80:
-                    sell_signals.append('随机指标超买')
-        
-        # 成交量信号
-        if 'volume_sma' in current and not pd.isna(current['volume_sma']):
-            indicators_values['volume_sma'] = current['volume_sma']
-            
-            if current['volume'] > current['volume_sma'] * 1.5:
-                if buy_signals:
-                    buy_signals.append('成交量放大')
-                if sell_signals:
-                    sell_signals.append('成交量放大')
-        
-        # 确定最终信号
-        min_indicators = self.config['signal_rules']['min_indicators']
-        confidence_threshold = self.config['signal_rules']['confidence_threshold']
-        
-        signal_type = 'NEUTRAL'
-        confidence = 0.0
-        triggered_rules = []
-        message = ''
-        
-        if len(buy_signals) >= min_indicators:
-            signal_type = 'BUY'
-            triggered_rules = buy_signals
-            confidence = min(1.0, len(buy_signals) / 5.0)  # 最多5个信号
-            message = f'买入信号: {", ".join(buy_signals)}'
-        elif len(sell_signals) >= min_indicators:
-            signal_type = 'SELL'
-            triggered_rules = sell_signals
-            confidence = min(1.0, len(sell_signals) / 5.0)
-            message = f'卖出信号: {", ".join(sell_signals)}'
-        
-        # 只返回置信度高于阈值的信号
-        if confidence >= confidence_threshold:
             return TechnicalSignal(
                 symbol=symbol,
-                timestamp=datetime.now(),
+                timestamp=latest_time,
                 signal_type=signal_type,
-                confidence=confidence,
-                indicators=indicators_values,
-                triggered_rules=triggered_rules,
-                price=current['close'],
+                price=float(latest_price),
+                rsi_value=float(latest_rsi),
                 message=message
             )
+            
+        except Exception as e:
+            logger.error(f"{symbol}: RSI分析时出错: {e}")
+            return None
+    
+    def _evaluate_rsi_signal(self, rsi_value: float) -> tuple[str, str]:
+        """
+        根据RSI值评估交易信号
         
-        return None
+        Args:
+            rsi_value: 当前RSI值
+            
+        Returns:
+            tuple: (信号类型, 描述消息)
+        """
+        if np.isnan(rsi_value):
+            return 'NEUTRAL', "RSI数据无效"
+        
+        if rsi_value <= self.oversold:
+            return 'BUY', f"RSI({self.rsi_period})为{rsi_value:.1f}，进入超卖区域(<={self.oversold})，可能出现反弹机会"
+        elif rsi_value >= self.overbought:
+            return 'SELL', f"RSI({self.rsi_period})为{rsi_value:.1f}，进入超买区域(>={self.overbought})，可能出现回调风险"
+        else:
+            # 进一步细分中性区域
+            if rsi_value < 40:
+                return 'NEUTRAL', f"RSI({self.rsi_period})为{rsi_value:.1f}，偏向弱势，关注是否跌破{self.oversold}"
+            elif rsi_value > 60:
+                return 'NEUTRAL', f"RSI({self.rsi_period})为{rsi_value:.1f}，偏向强势，关注是否突破{self.overbought}"
+            else:
+                return 'NEUTRAL', f"RSI({self.rsi_period})为{rsi_value:.1f}，处于中性区域，无明确信号"
 
 
 class MarketAnalyzer:
-    """市场分析器 - 管理多个交易对的技术分析"""
+    """
+    市场分析器 - 管理多个交易对的RSI分析
+    
+    负责：
+    - 批量分析多个交易对
+    - 生成市场概览
+    - 提供统一的分析接口
+    """
     
     def __init__(self, config: Optional[Dict] = None):
         """
         初始化市场分析器
         
         Args:
-            config: 分析器配置
+            config: 可选配置，包含RSI参数
         """
         self.config = config or {}
-        self.analyzer = TechnicalAnalyzer(config)
         
-    def analyze_symbols(self, symbols_data: Dict[str, pd.DataFrame]) -> Dict[str, List[TechnicalSignal]]:
-        """
-        分析多个交易对的技术信号
-        
-        Args:
-            symbols_data: 交易对数据字典 {symbol: DataFrame}
-            
-        Returns:
-            信号字典 {symbol: [signals]}
-        """
-        results = {}
-        
-        for symbol, df in symbols_data.items():
-            try:
-                # 计算技术指标
-                df_with_indicators = self.analyzer.calculate_indicators(df)
-                
-                # 分析信号
-                signals = self.analyzer.analyze_signals(df_with_indicators, symbol)
-                
-                if signals:
-                    results[symbol] = signals
-                    logger.info(f"分析 {symbol} 完成，发现 {len(signals)} 个信号")
-                
-            except Exception as e:
-                logger.error(f"分析 {symbol} 时发生错误: {e}")
-                continue
-        
-        return results
+        # 从配置中获取RSI参数
+        rsi_config = self.config.get('rsi', {})
+        self.rsi_analyzer = RsiAnalyzer(
+            rsi_period=rsi_config.get('period', 14),
+            oversold=rsi_config.get('oversold', 30),
+            overbought=rsi_config.get('overbought', 70)
+        )
     
-    def get_market_summary(self, signals_data: Dict[str, List[TechnicalSignal]]) -> Dict[str, Any]:
+    def analyze_market(self, market_data: Dict[str, pd.DataFrame]) -> Dict[str, TechnicalSignal]:
         """
-        生成市场分析摘要
+        分析市场中所有交易对的RSI信号
         
         Args:
-            signals_data: 信号数据字典
+            market_data: {symbol: DataFrame} 格式的市场数据
             
         Returns:
-            市场摘要字典
+            {symbol: TechnicalSignal} 格式的信号字典
         """
-        total_signals = 0
-        buy_signals = 0
-        sell_signals = 0
-        high_confidence_signals = 0
+        signals = {}
         
-        for symbol, signals in signals_data.items():
-            for signal in signals:
-                total_signals += 1
-                if signal.signal_type == 'BUY':
-                    buy_signals += 1
-                elif signal.signal_type == 'SELL':
-                    sell_signals += 1
-                    
-                if signal.confidence >= 0.8:
-                    high_confidence_signals += 1
+        for symbol, df in market_data.items():
+            signal = self.rsi_analyzer.analyze(symbol, df)
+            if signal:
+                signals[symbol] = signal
+                logger.info(f"{symbol}: {signal.message}")
+        
+        return signals
+    
+    def get_market_summary(self, signals: Dict[str, TechnicalSignal]) -> Dict[str, Any]:
+        """
+        生成市场摘要统计
+        
+        Args:
+            signals: 信号字典
+            
+        Returns:
+            市场摘要数据
+        """
+        if not signals:
+            return {
+                'total_symbols': 0,
+                'buy_signals': 0,
+                'sell_signals': 0,
+                'neutral_signals': 0,
+                'avg_rsi': 0.0,
+                'extreme_signals': [],  # 极端信号列表
+                'market_sentiment': 'NEUTRAL'
+            }
+        
+        # 统计各类信号数量
+        buy_count = sum(1 for s in signals.values() if s.signal_type == 'BUY')
+        sell_count = sum(1 for s in signals.values() if s.signal_type == 'SELL')
+        neutral_count = len(signals) - buy_count - sell_count
+        
+        # 计算平均RSI
+        avg_rsi = np.mean([s.rsi_value for s in signals.values()])
+        
+        # 找出极端信号（RSI < 25 或 RSI > 75）
+        extreme_signals = [
+            s for s in signals.values() 
+            if s.rsi_value <= 25 or s.rsi_value >= 75
+        ]
+        
+        # 判断市场情绪
+        if buy_count > sell_count * 1.5:
+            market_sentiment = 'BULLISH'  # 偏多
+        elif sell_count > buy_count * 1.5:
+            market_sentiment = 'BEARISH'  # 偏空
+        else:
+            market_sentiment = 'NEUTRAL'  # 中性
         
         return {
-            'total_symbols': len(signals_data),
-            'total_signals': total_signals,
-            'buy_signals': buy_signals,
-            'sell_signals': sell_signals,
-            'high_confidence_signals': high_confidence_signals,
-            'market_sentiment': 'BULLISH' if buy_signals > sell_signals else 'BEARISH' if sell_signals > buy_signals else 'NEUTRAL'
+            'total_symbols': len(signals),
+            'buy_signals': buy_count,
+            'sell_signals': sell_count,
+            'neutral_signals': neutral_count,
+            'avg_rsi': float(avg_rsi),
+            'extreme_signals': extreme_signals,
+            'market_sentiment': market_sentiment
         }
+
+
+# 便捷函数 - 对外提供的简单接口
+def analyze_symbol_rsi(symbol: str, df: pd.DataFrame, config: Optional[Dict] = None) -> Optional[TechnicalSignal]:
+    """
+    分析单个交易对的RSI信号 (便捷函数)
+    
+    Args:
+        symbol: 交易对符号
+        df: OHLCV数据
+        config: 可选配置
+        
+    Returns:
+        技术信号或None
+    """
+    # 从配置中获取RSI参数
+    if config and 'rsi' in config:
+        rsi_config = config['rsi']
+        analyzer = RsiAnalyzer(
+            rsi_period=rsi_config.get('period', 14),
+            oversold=rsi_config.get('oversold', 30),
+            overbought=rsi_config.get('overbought', 70)
+        )
+    else:
+        analyzer = RsiAnalyzer()  # 使用默认参数
+    
+    return analyzer.analyze(symbol, df)
+
+
+def analyze_market_rsi(market_data: Dict[str, pd.DataFrame], config: Optional[Dict] = None) -> Dict[str, TechnicalSignal]:
+    """
+    分析整个市场的RSI信号 (便捷函数)
+    
+    Args:
+        market_data: {symbol: DataFrame} 格式的市场数据
+        config: 可选配置
+        
+    Returns:
+        {symbol: TechnicalSignal} 格式的信号字典
+    """
+    market_analyzer = MarketAnalyzer(config)
+    return market_analyzer.analyze_market(market_data)
+
+
+# 为了保持向后兼容，保留原有的函数名
+def analyze_symbol(symbol: str, df: pd.DataFrame, config: Optional[Dict] = None) -> Optional[TechnicalSignal]:
+    """向后兼容的函数名"""
+    return analyze_symbol_rsi(symbol, df, config)
+
+
+def analyze_market(market_data: Dict[str, pd.DataFrame], config: Optional[Dict] = None) -> Dict[str, TechnicalSignal]:
+    """向后兼容的函数名"""
+    return analyze_market_rsi(market_data, config)
