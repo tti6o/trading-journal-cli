@@ -288,9 +288,50 @@ class EmailNotificationService:
         
         return self.send_notification(message)
     
+    def send_signal_notification_with_charts(self, signals: List[Any], recipient: str, 
+                                             chart_paths: List[str] = None, 
+                                             market_summary: Dict = None) -> bool:
+        """
+        发送包含图表的技术分析信号通知
+        
+        Args:
+            signals: 技术信号列表
+            recipient: 收件人邮箱
+            chart_paths: 图表文件路径列表
+            market_summary: 市场摘要数据
+            
+        Returns:
+            是否成功发送
+        """
+        if not signals:
+            logger.warning("发送信号通知失败: 没有信号数据")
+            return False
+        
+        logger.info(f"准备发送技术分析信号邮件到: {recipient}")
+        logger.info(f"信号数量: {len(signals)}, 图表数量: {len(chart_paths) if chart_paths else 0}")
+        
+        # 生成邮件内容
+        subject = f"技术分析信号提醒 (RSI+斐波那契) - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        content = self._generate_enhanced_signal_email_content(signals, market_summary)
+        
+        message = NotificationMessage(
+            recipient=recipient,
+            subject=subject,
+            content=content,
+            message_type='html',
+            attachments=chart_paths or [],
+            priority=1
+        )
+        
+        logger.info(f"邮件消息已创建，主题: {subject}")
+        result = self.send_notification(message)
+        logger.info(f"邮件发送结果: {result}")
+        
+        return result
+    
     def _generate_signal_email_content(self, signals: List[Any]) -> str:
         """
-        生成信号邮件内容 (适配MVP版本技术分析)
+        生成信号邮件内容 (支持RSI和斐波那契分析)
         
         Args:
             signals: 信号列表
@@ -298,9 +339,12 @@ class EmailNotificationService:
         Returns:
             HTML格式的邮件内容
         """
-        # 统计信号类型
+        # 统计信号类型和指标类型
         buy_signals = [s for s in signals if s.signal_type == 'BUY']
         sell_signals = [s for s in signals if s.signal_type == 'SELL']
+        
+        rsi_signals = [s for s in signals if s.indicator_type == 'RSI']
+        fibonacci_signals = [s for s in signals if s.indicator_type == 'FIBONACCI']
         
         html_content = f"""
         <html>
@@ -333,8 +377,8 @@ class EmailNotificationService:
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🚨 RSI技术分析信号</h1>
-                    <p>发现 {len(signals)} 个交易信号 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    <h1>🚨 技术分析信号 (RSI + 斐波那契)</h1>
+                    <p>发现 {len(signals)} 个交易信号 | {len(rsi_signals)} 个RSI信号, {len(fibonacci_signals)} 个斐波那契信号 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
                 </div>
                 
                 <div class="summary">
@@ -345,7 +389,13 @@ class EmailNotificationService:
                         <strong>📉 卖出信号:</strong> {len(sell_signals)} 个
                     </div>
                     <div class="summary-item">
-                        <strong>📊 总计分析:</strong> {len(signals)} 个交易对
+                        <strong>🔶 RSI分析:</strong> {len(rsi_signals)} 个
+                    </div>
+                    <div class="summary-item">
+                        <strong>📐 斐波那契:</strong> {len(fibonacci_signals)} 个
+                    </div>
+                    <div class="summary-item">
+                        <strong>📊 总计:</strong> {len(signals)} 个信号
                     </div>
                 </div>
         """
@@ -377,8 +427,7 @@ class EmailNotificationService:
                         
                         <div class="rsi-info">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span>RSI(14) 指标值:</span>
-                                <span class="rsi-value">{signal.rsi_value:.1f}</span>
+                                {self._format_signal_indicator(signal)}
                             </div>
                         </div>
                         
@@ -408,7 +457,7 @@ class EmailNotificationService:
                             <span class="signal-type neutral">{signal.symbol}</span>
                         </div>
                         <div class="signal-price">
-                            💰 ${signal.price:.6f} | RSI: {signal.rsi_value:.1f}
+                            💰 ${signal.price:.6f} | {self._format_signal_price_info(signal)}
                         </div>
                     </div>
                     <div class="signal-message" style="font-size: 12px;">
@@ -421,11 +470,11 @@ class EmailNotificationService:
         
         html_content += f"""
                 <div class="disclaimer">
-                    <strong>⚠️ 风险提示:</strong> 本分析仅基于RSI技术指标，仅供参考。投资有风险，请结合其他分析方法并谨慎决策。
+                    <strong>⚠️ 风险提示:</strong> 本分析基于RSI和斐波那契技术指标，仅供参考。投资有风险，请结合其他分析方法和基本面分析，并谨慎决策。
                 </div>
                 
                 <div class="footer">
-                    <p>本邮件由交易日志分析工具自动生成 | RSI技术分析模块 (MVP版本)</p>
+                    <p>本邮件由交易日志分析工具自动生成 | 多指标技术分析系统 (RSI + 斐波那契)</p>
                     <p>如需停止接收此类邮件，请联系系统管理员</p>
                 </div>
             </div>
@@ -434,6 +483,255 @@ class EmailNotificationService:
         """
         
         return html_content
+    
+    def _generate_enhanced_signal_email_content(self, signals: List[Any], 
+                                                market_summary: Dict = None) -> str:
+        """
+        生成增强版信号邮件内容 (支持RSI和斐波那契分析 + 市场摘要)
+        
+        Args:
+            signals: 信号列表
+            market_summary: 市场摘要数据
+            
+        Returns:
+            HTML格式的邮件内容
+        """
+        # 统计信号类型和指标类型
+        buy_signals = [s for s in signals if s.signal_type == 'BUY']
+        sell_signals = [s for s in signals if s.signal_type == 'SELL']
+        
+        rsi_signals = [s for s in signals if s.indicator_type == 'RSI']
+        fibonacci_signals = [s for s in signals if s.indicator_type == 'FIBONACCI']
+        
+        # 高置信度信号统计
+        high_conf_signals = [s for s in signals if s.confidence >= 0.7]
+        
+        html_content = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }}
+                .container {{ max-width: 900px; margin: 0 auto; background-color: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px 20px; text-align: center; }}
+                .header h1 {{ margin: 0; font-size: 28px; font-weight: bold; }}
+                .header p {{ margin: 10px 0 0 0; font-size: 16px; opacity: 0.9; }}
+                .summary {{ padding: 20px; background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; }}
+                .summary-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }}
+                .summary-item {{ padding: 15px; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }}
+                .summary-number {{ font-size: 24px; font-weight: bold; color: #007bff; }}
+                .summary-label {{ font-size: 12px; color: #666; margin-top: 5px; }}
+                .market-sentiment {{ padding: 20px; margin: 20px; border-radius: 8px; text-align: center; }}
+                .market-sentiment.bullish {{ background: linear-gradient(to right, #d4edda, #c3e6cb); border: 1px solid #28a745; }}
+                .market-sentiment.bearish {{ background: linear-gradient(to right, #f8d7da, #f1b0b7); border: 1px solid #dc3545; }}
+                .market-sentiment.neutral {{ background: linear-gradient(to right, #fff3cd, #ffeaa7); border: 1px solid #ffc107; }}
+                .signal {{ margin: 15px 20px; padding: 20px; border-radius: 8px; border-left: 5px solid #007bff; background-color: #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }}
+                .signal.buy {{ border-left-color: #28a745; background: linear-gradient(to right, #f8fff9, #ffffff); }}
+                .signal.sell {{ border-left-color: #dc3545; background: linear-gradient(to right, #fff8f8, #ffffff); }}
+                .signal-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }}
+                .signal-type {{ font-size: 18px; font-weight: bold; }}
+                .signal-type.buy {{ color: #28a745; }}
+                .signal-type.sell {{ color: #dc3545; }}
+                .signal-price {{ font-size: 16px; color: #666; }}
+                .indicator-info {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; }}
+                .indicator-value {{ font-size: 20px; font-weight: bold; color: #007bff; }}
+                .signal-message {{ font-size: 14px; line-height: 1.6; color: #333; margin-top: 10px; }}
+                .confidence-badge {{ display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }}
+                .confidence-high {{ background-color: #28a745; color: white; }}
+                .confidence-medium {{ background-color: #ffc107; color: black; }}
+                .confidence-low {{ background-color: #6c757d; color: white; }}
+                .chart-notice {{ background-color: #e7f3ff; border: 1px solid #b3d9ff; padding: 15px; margin: 20px; border-radius: 5px; text-align: center; }}
+                .footer {{ padding: 20px; text-align: center; background-color: #f8f9fa; color: #666; font-size: 12px; }}
+                .disclaimer {{ background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; margin: 20px; border-radius: 5px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🚨 技术分析信号报告</h1>
+                    <p>RSI + 斐波那契综合分析 | 发现 {len(signals)} 个信号 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                </div>
+                
+                <div class="summary">
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <div class="summary-number">{len(buy_signals)}</div>
+                            <div class="summary-label">📈 买入信号</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-number">{len(sell_signals)}</div>
+                            <div class="summary-label">📉 卖出信号</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-number">{len(rsi_signals)}</div>
+                            <div class="summary-label">🔶 RSI分析</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-number">{len(fibonacci_signals)}</div>
+                            <div class="summary-label">📐 斐波那契</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-number">{len(high_conf_signals)}</div>
+                            <div class="summary-label">⭐ 高置信度</div>
+                        </div>
+                    </div>
+                </div>
+        """
+        
+        # 添加市场情绪摘要
+        if market_summary:
+            sentiment = market_summary.get('market_sentiment', 'NEUTRAL')
+            sentiment_class = sentiment.lower()
+            sentiment_emoji = {'BULLISH': '🐂', 'BEARISH': '🐻', 'NEUTRAL': '⚖️'}.get(sentiment, '⚖️')
+            
+            html_content += f"""
+                <div class="market-sentiment {sentiment_class}">
+                    <h3 style="margin: 0 0 10px 0;">{sentiment_emoji} 市场情绪: {sentiment}</h3>
+                    <p style="margin: 0; font-size: 14px;">
+                        分析了 {market_summary.get('total_symbols', 0)} 个交易对，
+                        总计 {market_summary.get('total_signals', 0)} 个信号，
+                        其中 {market_summary.get('high_confidence_signals', 0)} 个高置信度信号
+                    </p>
+                </div>
+            """
+        
+        # 显示买入和卖出信号
+        for signal_type, signal_list, emoji in [('买入信号', buy_signals, '📈'), ('卖出信号', sell_signals, '📉')]:
+            if signal_list:
+                html_content += f"""
+                <div style="margin: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+                    <h3 style="margin: 0 0 15px 0; color: #333;">{emoji} {signal_type} ({len(signal_list)} 个)</h3>
+                """
+                
+                for signal in signal_list:
+                    signal_class = signal.signal_type.lower()
+                    confidence_class = 'high' if signal.confidence >= 0.7 else 'medium' if signal.confidence >= 0.4 else 'low'
+                    
+                    html_content += f"""
+                    <div class="signal {signal_class}">
+                        <div class="signal-header">
+                            <div>
+                                <span class="signal-type {signal_class}">{signal.symbol}</span>
+                                <span class="confidence-badge confidence-{confidence_class}">
+                                    置信度 {signal.confidence:.1%}
+                                </span>
+                                <span style="margin-left: 10px; font-size: 14px; color: #666;">
+                                    {signal.timestamp.strftime('%H:%M:%S')}
+                                </span>
+                            </div>
+                            <div class="signal-price">
+                                💰 ${signal.price:.6f}
+                            </div>
+                        </div>
+                        
+                        <div class="indicator-info">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                {self._format_enhanced_signal_indicator(signal)}
+                            </div>
+                        </div>
+                        
+                        <div class="signal-message">
+                            💡 <strong>分析说明:</strong> {signal.message}
+                        </div>
+                    </div>
+                    """
+                
+                html_content += "</div>"
+        
+        # 图表附件说明
+        html_content += f"""
+            <div class="chart-notice">
+                <h4 style="margin: 0 0 10px 0;">📊 技术分析图表</h4>
+                <p style="margin: 0;">
+                    本邮件已附带相关交易对的技术分析图表，包含K线图、关键高低点标记、
+                    斐波那契回调线和扩展线。请查看邮件附件获取详细的可视化分析。
+                </p>
+            </div>
+        """
+        
+        html_content += f"""
+                <div class="disclaimer">
+                    <strong>⚠️ 风险提示:</strong> 本分析基于RSI和斐波那契技术指标的综合分析，仅供参考。
+                    投资有风险，请结合其他分析方法、基本面分析和风险管理策略，谨慎决策。
+                </div>
+                
+                <div class="footer">
+                    <p>本邮件由交易日志分析工具自动生成 | RSI + 斐波那契综合技术分析系统</p>
+                    <p>图表附件包含详细的技术分析可视化 | 如需停止接收此类邮件，请联系系统管理员</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html_content
+    
+    def _format_signal_indicator(self, signal) -> str:
+        """格式化信号指标信息"""
+        if signal.indicator_type == 'RSI' and signal.rsi_value is not None:
+            return f'''
+                <span>RSI(14) 指标值:</span>
+                <span class="rsi-value">{signal.rsi_value:.1f}</span>
+            '''
+        elif signal.indicator_type == 'FIBONACCI':
+            fib_pct = signal.fib_level * 100 if signal.fib_level else 0
+            return f'''
+                <span>斐波那契 {signal.fib_type}:</span>
+                <span class="rsi-value">{fib_pct:.1f}% ({signal.trend_direction})</span>
+            '''
+        else:
+            return f'''
+                <span>{signal.indicator_type} 指标:</span>
+                <span class="rsi-value">置信度 {signal.confidence:.1%}</span>
+            '''
+    
+    def _format_signal_price_info(self, signal) -> str:
+        """格式化信号价格信息"""
+        if signal.indicator_type == 'RSI' and signal.rsi_value is not None:
+            return f"RSI: {signal.rsi_value:.1f}"
+        elif signal.indicator_type == 'FIBONACCI':
+            fib_pct = signal.fib_level * 100 if signal.fib_level else 0
+            return f"FIB: {fib_pct:.1f}%"
+        else:
+            return f"{signal.indicator_type}: {signal.confidence:.1%}"
+    
+    def _format_enhanced_signal_indicator(self, signal) -> str:
+        """格式化增强版信号指标信息"""
+        if signal.indicator_type == 'RSI' and signal.rsi_value is not None:
+            return f'''
+                <span>RSI(14) 指标值:</span>
+                <span class="indicator-value">{signal.rsi_value:.1f}</span>
+                <span style="font-size: 12px; color: #666;">
+                    ({self._get_rsi_level_description(signal.rsi_value)})
+                </span>
+            '''
+        elif signal.indicator_type == 'FIBONACCI':
+            fib_pct = signal.fib_level * 100 if signal.fib_level else 0
+            trend_emoji = '📈' if signal.trend_direction == 'UP' else '📉'
+            return f'''
+                <span>斐波那契 {signal.fib_type}:</span>
+                <span class="indicator-value">{fib_pct:.1f}%</span>
+                <span style="font-size: 12px; color: #666;">
+                    {trend_emoji} {signal.trend_direction} 趋势
+                </span>
+            '''
+        else:
+            return f'''
+                <span>{signal.indicator_type} 指标:</span>
+                <span class="indicator-value">置信度 {signal.confidence:.1%}</span>
+            '''
+    
+    def _get_rsi_level_description(self, rsi_value: float) -> str:
+        """获取RSI水平描述"""
+        if rsi_value <= 30:
+            return "超卖区域"
+        elif rsi_value >= 70:
+            return "超买区域"
+        elif rsi_value < 40:
+            return "偏弱"
+        elif rsi_value > 60:
+            return "偏强"
+        else:
+            return "中性区域"
     
     def test_email_config(self) -> Dict[str, Any]:
         """

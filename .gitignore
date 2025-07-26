@@ -34,6 +34,15 @@ Binance-*.xlsx
 real_data/
 user_data/
 
+# 配置文件 - 包含API密钥、邮箱密码等敏感信息
+config/config.ini
+config/config.ini.local
+config/config.ini.backup
+config/*.local
+config/*.backup
+*.ini.local
+*.ini.backup
+
 # 系统文件
 .DS_Store
 .DS_Store?

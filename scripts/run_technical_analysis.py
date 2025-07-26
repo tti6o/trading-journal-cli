@@ -8,10 +8,22 @@
 import sys
 import os
 import time
+import logging
 from datetime import datetime
 
 # 添加项目根目录到路径
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+# 配置日志级别以显示详细的分析过程
+logging.basicConfig(
+    level=logging.INFO,  # 设置为INFO级别以显示详细日志
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%H:%M:%S'
+)
+
+# 为特定模块设置更详细的日志级别
+logging.getLogger('services.technical_analysis').setLevel(logging.DEBUG)
+logging.getLogger('services.signal_engine').setLevel(logging.INFO)
 
 from services.signal_engine import get_signal_engine
 from services.scheduler import SchedulerService
@@ -65,12 +77,20 @@ def run_single_analysis():
         return
     
     print("🔄 开始分析...")
+    print("=" * 60)
+    print("📋 详细分析日志:")
+    print("=" * 60)
+    
     start_time = time.time()
     
     # 执行分析
     result = signal_engine.run_analysis()
     
     execution_time = time.time() - start_time
+    
+    print("=" * 60)
+    print("📈 分析结果摘要:")
+    print("=" * 60)
     
     if result['success']:
         print(f"✅ 分析完成! 耗时: {execution_time:.2f}秒")
@@ -88,19 +108,36 @@ def run_single_analysis():
             print(f"  买入信号: {market_summary.get('buy_signals', 0)}")
             print(f"  卖出信号: {market_summary.get('sell_signals', 0)}")
             print(f"  中性信号: {market_summary.get('neutral_signals', 0)}")
-            print(f"  平均置信度: {market_summary.get('avg_confidence', 0):.2f}")
+            # 修复平均置信度计算
+            rsi_analysis = market_summary.get('rsi_analysis', {})
+            avg_rsi = rsi_analysis.get('avg_rsi', 0)
+            print(f"  平均RSI: {avg_rsi:.1f}")
+            
+            # 显示斐波那契分析统计
+            fib_analysis = market_summary.get('fibonacci_analysis', {})
+            fib_count = fib_analysis.get('count', 0)
+            if fib_count > 0:
+                print(f"  斐波那契信号: {fib_count} 个")
+                print(f"    回调信号: {fib_analysis.get('retracement_count', 0)} 个")
+                print(f"    扩展信号: {fib_analysis.get('extension_count', 0)} 个")
         
-        # 显示高置信度信号详情
-        high_confidence_signals = result.get('high_confidence_signals', [])
-        if high_confidence_signals:
-            print(f"\n🚨 高置信度信号详情:")
-            for signal in high_confidence_signals:
-                print(f"  {signal.symbol}: {signal.signal_type} "
-                      f"(置信度: {signal.confidence:.2f}, 价格: {signal.price:.6f})")
-                print(f"    描述: {signal.message}")
-                print(f"    触发规则: {len(signal.triggered_rules)} 个")
+        # 显示信号详情
+        signals_detail = result.get('signals_detail', {})
+        if signals_detail:
+            print(f"\n🚨 发现的交易信号:")
+            for symbol, signals in signals_detail.items():
+                print(f"\n  📈 {symbol}:")
+                for signal in signals:
+                    confidence_str = f" (置信度: {signal.confidence:.1%})" if hasattr(signal, 'confidence') else ""
+                    fib_info = ""
+                    if hasattr(signal, 'fib_level') and signal.fib_level:
+                        fib_type = getattr(signal, 'fib_type', 'UNKNOWN')
+                        fib_info = f" [{fib_type} {signal.fib_level*100:.1f}%]"
+                    
+                    print(f"    {signal.signal_type}{fib_info}{confidence_str}")
+                    print(f"    💬 {signal.message}")
         else:
-            print("\n📊 当前无高置信度信号")
+            print("\n📊 当前无需要通知的信号")
     else:
         print(f"❌ 分析失败: {result.get('error', '未知错误')}")
 
