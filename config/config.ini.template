@@ -65,7 +65,7 @@ proximity_threshold_pct = 0.02
 # 斐波那契回调水平 (逗号分隔)
 retracement_levels = 0.236,0.382,0.5,0.618,0.786
 # 斐波那契扩展水平 (逗号分隔)  
-extension_levels = 1.272,1.618,2.618
+extension_levels = 1.000,1.618,2.618
 
 [indicators]
 # 技术指标配置 - 启用/禁用各种指标
