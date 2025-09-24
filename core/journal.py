@@ -113,13 +113,14 @@ def generate_summary_report(since: str = None) -> dict:
     - 调用工具层的函数计算各项核心指标（净盈亏、胜率、盈亏比等）。
     - 组装成一个包含所有报告数据的字典并返回。
     """
-    print("业务逻辑层：开始生成汇总报告...")
-    
+    # 静默模式，减少调试输出
+    # print("业务逻辑层：开始生成汇总报告...")
+
     try:
         # 获取交易数据
         trades = database_setup.get_trades(since=since)
         if not trades:
-            print("没有找到符合条件的交易记录。")
+            # print("没有找到符合条件的交易记录。")
             return {
                 'total_trades': 0,
                 'total_pnl': 0.0,
@@ -140,7 +141,7 @@ def generate_summary_report(since: str = None) -> dict:
             latest = max(t['utc_time'] for t in trades)
             stats['time_range'] = f"从 {earliest[:10]} 到 {latest[:10]}"
         
-        print("业务逻辑层：汇总报告生成完成。")
+        # print("业务逻辑层：汇总报告生成完成。")
         return stats
         
     except Exception as e:
@@ -353,18 +354,21 @@ def get_currency_trades_details(currency: str) -> str:
 def analyze_currency_pnl(currency: str) -> str:
     """
     分析指定币种的净盈亏情况
-    
+
     :param currency: 币种符号 (例如: BTC, ETH)
     :return: 格式化的分析报告字符串
     """
+    # 获取所有交易记录
+    all_trades = database_setup.get_all_trades()
+
     # 计算该币种的盈亏情况
-    pnl_data = utilities.calculate_currency_pnl(currency)
+    pnl_data = utilities.calculate_currency_pnl(all_trades, currency)
     
     if not pnl_data:
         return f"❌ 未找到 {currency} 的交易记录"
     
     # 格式化报告
-    return utilities.format_currency_report(currency, pnl_data)
+    return utilities.format_currency_report(pnl_data)
 
 def list_all_currencies() -> dict:
     """
@@ -515,11 +519,12 @@ class TradingJournalManager:
             Dict[str, Any]: 同步结果
         """
         try:
-            print(f"正在从 {self.exchange_name} 同步最近 {days} 天的交易记录...")
-            
+            # 静默模式，减少debug输出
+            # print(f"正在从 {self.exchange_name} 同步最近 {days} 天的交易记录...")
+
             # 1. 获取交易所客户端
             client = self.get_exchange_client()
-            
+
             # 2. 同步交易数据
             sync_result = client.sync_trades(days=days)
             
@@ -542,8 +547,9 @@ class TradingJournalManager:
                 }
             
             # 4. 导入到数据库
-            print(f"正在导入 {len(trades)} 条交易记录到数据库...")
-            
+            # 静默模式，减少debug输出
+            # print(f"正在导入 {len(trades)} 条交易记录到数据库...")
+
             new_count = 0
             duplicate_count = 0
             
@@ -714,4 +720,50 @@ def get_binance_active_symbols() -> Dict[str, Any]:
 
 def sync_specific_symbol_trades(symbol: str, days: int = 30) -> Dict[str, Any]:
     """同步指定交易对交易记录（兼容旧接口）"""
-    return get_manager().sync_symbol_trades(symbol, days) 
+    return get_manager().sync_symbol_trades(symbol, days)
+
+def get_current_prices(currencies: List[str]) -> Dict[str, float]:
+    """
+    获取指定货币的当前价格
+
+    Args:
+        currencies: 币种列表，如 ['BTC', 'ETH', 'XRP']
+
+    Returns:
+        Dict[str, float]: 币种到价格的映射
+    """
+    try:
+        manager = get_manager()
+
+        # 检查是否有可用的交易所客户端
+        if not hasattr(manager, 'exchange_client') or manager.exchange_client is None:
+            # 尝试初始化交易所客户端
+            result = manager.test_connection()
+            if not result['success']:
+                # API连接失败，返回空价格
+                return {currency: 0.0 for currency in currencies}
+
+        # 将币种转换为交易对符号 (添加USDT)
+        symbols = [f"{currency}USDT" for currency in currencies if currency != 'USDT']
+
+        if not symbols:
+            return {}
+
+        # 获取价格
+        prices = manager.exchange_client.get_multiple_prices(symbols)
+
+        # 转换回币种格式
+        result = {}
+        for currency in currencies:
+            if currency == 'USDT':
+                result[currency] = 1.0  # USDT价格固定为1
+            else:
+                symbol = f"{currency}USDT"
+                result[currency] = prices.get(symbol, 0.0)
+
+        return result
+
+    except Exception as e:
+        logging.error(f"获取价格失败: {e}")
+        # 出错时返回0价格
+        return {currency: 0.0 for currency in currencies} 

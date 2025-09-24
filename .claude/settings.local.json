@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source:*)",
+      "Bash(alias:*)"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": [
+      "/Users/admin/iCloud云盘（归档）/个人笔记知识库/200-学习/203-学习领域/206-赚钱/206.3-知识积累/交易日志系统"
+    ]
+  }
+}

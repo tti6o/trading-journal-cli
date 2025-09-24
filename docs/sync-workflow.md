@@ -1,0 +1,140 @@
+```mermaid
+flowchart TD
+    A[用户执行 python main.py sync] --> B{检查 days 参数}
+
+    B -->|有指定天数| C[手动同步模式]
+    B -->|未指定天数| D[智能同步模式]
+
+    D --> E{数据库中有上次同步记录}
+    E -->|有记录| F[计算时间差]
+    E -->|无记录| G[首次同步模式]
+
+    F --> H[设置同步天数]
+    G --> I[设置30天]
+    C --> J[使用指定天数]
+
+    H --> K[显示智能同步信息]
+    I --> L[显示首次同步信息]
+    J --> M[显示手动同步信息]
+
+    K --> N[开始数据同步流程]
+    L --> N
+    M --> N
+
+    N --> O{检查配置文件}
+
+    O -->|存在| P[尝试API同步]
+    O -->|不存在| Q[显示配置提示]
+
+    P --> R[调用同步函数]
+    R --> S[创建交易所客户端]
+
+    S --> T[连接到币安API]
+    T --> U{API连接成功}
+
+    U -->|失败| V[显示连接失败信息]
+    U -->|成功| W[计算同步起始时间]
+
+    W --> X[获取历史交易对列表]
+    X --> Y[发现活跃交易对]
+
+    Y --> Z[策略1 历史数据]
+    Z --> AA[策略2 余额检查]
+    AA --> BB[策略3 常见交易对]
+
+    BB --> CC[合并所有交易对]
+    CC --> DD[遍历交易对获取数据]
+
+    DD --> EE{获取数据成功}
+    EE -->|失败| FF[记录错误继续下一个]
+    EE -->|成功| GG[解析交易记录]
+
+    GG --> HH[数据标准化处理]
+    HH --> II[导入数据库去重]
+
+    II --> JJ{还有更多交易对}
+    JJ -->|是| DD
+    JJ -->|否| KK[计算PnL]
+
+    FF --> JJ
+
+    KK --> LL[更新同步时间戳]
+    LL --> MM[显示同步结果]
+
+    V --> NN[开始统计分析模块]
+    Q --> NN
+    MM --> NN
+
+    NN --> OO[查询所有历史交易数据]
+    OO --> PP{有交易数据}
+
+    PP -->|无数据| RR[显示无数据提示]
+    PP -->|有数据| QQ[=== 核心指标分析 ===]
+
+    QQ --> SS[计算历史总盈亏]
+    SS --> TT[计算历史胜率]
+    TT --> UU[计算盈亏比]
+    UU --> VV[显示整体盈利状态]
+
+    VV --> WW[=== 交易量统计 ===]
+    WW --> XX[统计买入/卖出笔数]
+    XX --> YY[统计总买入/卖出量]
+    YY --> ZZ[统计总手续费]
+
+    ZZ --> AAA[=== 按币种分组统计 ===]
+    AAA --> BBB[获取所有币种数据]
+    BBB --> CCC[按盈亏排序显示]
+    CCC --> DDD[彩色编码盈亏状态]
+
+    DDD --> EEE[=== 主要币种详细分析 ===]
+    EEE --> FFF{筛选主要币种}
+    FFF -->|交易≥5笔且盈亏≥100 USDT| GGG[显示币种详细分析]
+    FFF -->|不符合条件| HHH[跳过详细分析]
+
+    GGG --> III[显示交易笔数分布]
+    III --> JJJ[显示已实现盈亏]
+    JJJ --> KKK[显示胜率]
+    KKK --> LLL[显示持仓情况]
+
+    HHH --> MMM[显示最近30天概况]
+    LLL --> MMM
+    MMM --> NNN[提供操作建议]
+
+    RR --> OOO[结束]
+    NNN --> OOO
+
+    style A fill:#e1f5fe
+    style K fill:#c8e6c9
+    style L fill:#c8e6c9
+    style M fill:#c8e6c9
+    style QQ fill:#4fc3f7
+    style WW fill:#4fc3f7
+    style AAA fill:#4fc3f7
+    style EEE fill:#4fc3f7
+    style U fill:#ffecb3
+    style PP fill:#ffecb3
+    style FFF fill:#ffecb3
+    style MM fill:#c8e6c9
+    style V fill:#ffcdd2
+    style FF fill:#ffcdd2
+    style RR fill:#ffcdd2
+
+    classDef statsModule fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    class QQ,SS,TT,UU,VV,WW,XX,YY,ZZ,AAA,BBB,CCC,DDD,EEE,GGG,III,JJJ,KKK,LLL,MMM,NNN statsModule
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

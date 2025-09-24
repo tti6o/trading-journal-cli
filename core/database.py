@@ -392,15 +392,15 @@ def get_trades(since: str = None, symbol: str = None, side: str = None, limit: i
 def update_trade_pnl(trade_id: str, pnl: float):
     """
     更新指定交易的已实现盈亏。
-    
-    :param trade_id: 交易的唯一标识符
+
+    :param trade_id: 交易的数据库主键ID
     :param pnl: 已实现盈亏值
     """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
+
     cursor.execute('''
-        UPDATE trades SET pnl = ? WHERE trade_id = ?
+        UPDATE trades SET pnl = ? WHERE id = ?
     ''', (pnl, trade_id))
     
     conn.commit()

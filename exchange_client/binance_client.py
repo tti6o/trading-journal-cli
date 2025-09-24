@@ -13,6 +13,12 @@ from typing import List, Optional, Dict, Any
 
 from .base import ExchangeClient, SymbolDiscoveryStrategy
 from .models import Trade, AccountInfo, Symbol, Balance, TradeData, TradeSide
+
+# 禁用ccxt和网络请求的详细日志输出
+logging.getLogger('ccxt.base.exchange').setLevel(logging.WARNING)
+logging.getLogger('ccxt').setLevel(logging.WARNING)
+logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
 from .exceptions import (
     ExchangeAPIError, 
     AuthenticationError, 
@@ -102,6 +108,8 @@ class BinanceClient(ExchangeClient):
                 'secret': self.api_secret,
                 'sandbox': self.sandbox,
                 'enableRateLimit': self.rate_limit,
+                'timeout': 60000,  # 60秒超时
+                'verbose': False,  # 禁用详细日志输出
                 'options': {
                     'defaultType': 'spot',
                 }
@@ -537,6 +545,73 @@ class BinanceClient(ExchangeClient):
             
         except ccxt.BaseError as e:
             raise ExchangeAPIError(f"获取K线数据失败: {str(e)}")
-    
+
+    def get_current_price(self, symbol: str) -> float:
+        """
+        获取交易对的当前价格
+
+        Args:
+            symbol: 交易对符号 (如 BTCUSDT)
+
+        Returns:
+            float: 当前价格
+
+        Raises:
+            ExchangeAPIError: 获取价格失败
+        """
+        try:
+            if not self.is_connected:
+                success, msg = self.connect()
+                if not success:
+                    raise ExchangeAPIError(f"无法连接到交易所: {msg}")
+
+            # 使用ccxt的fetch_ticker获取最新价格
+            ticker = self.exchange.fetch_ticker(symbol)
+            return float(ticker['last']) if ticker['last'] else 0.0
+
+        except ccxt.BaseError as e:
+            logger.error(f"获取 {symbol} 价格失败: {e}")
+            raise ExchangeAPIError(f"获取 {symbol} 价格失败: {str(e)}")
+
+    def get_multiple_prices(self, symbols: List[str]) -> Dict[str, float]:
+        """
+        批量获取多个交易对的当前价格
+
+        Args:
+            symbols: 交易对符号列表
+
+        Returns:
+            Dict[str, float]: 交易对到价格的映射
+        """
+        try:
+            if not self.is_connected:
+                success, msg = self.connect()
+                if not success:
+                    raise ExchangeAPIError(f"无法连接到交易所: {msg}")
+
+            # 使用ccxt的fetch_tickers获取多个价格
+            tickers = self.exchange.fetch_tickers(symbols)
+            prices = {}
+
+            for symbol in symbols:
+                if symbol in tickers and tickers[symbol]['last']:
+                    prices[symbol] = float(tickers[symbol]['last'])
+                else:
+                    logger.warning(f"无法获取 {symbol} 的价格")
+                    prices[symbol] = 0.0
+
+            return prices
+
+        except ccxt.BaseError as e:
+            logger.error(f"批量获取价格失败: {e}")
+            # 如果批量获取失败，尝试逐个获取
+            prices = {}
+            for symbol in symbols:
+                try:
+                    prices[symbol] = self.get_current_price(symbol)
+                except:
+                    prices[symbol] = 0.0
+            return prices
+
     def __str__(self) -> str:
         return f"BinanceClient(connected={self.is_connected}, sandbox={self.sandbox})" 

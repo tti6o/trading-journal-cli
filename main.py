@@ -24,15 +24,13 @@ def cli():
     """
     交易日志 CLI 工具 - 分析币安交易记录的盈亏情况
     
-    🔧 基础功能:
+    🚀 核心功能:
+    - 数据同步和完整报告: python main.py sync
     - 初始化数据库: python main.py init
-    - 导入交易记录: python main.py import 交易文件.xlsx 
-    - 生成盈亏报告: python main.py report summary
-    - 查看指定币种净盈亏: python main.py currency XRP
-    
-    🚀 API 功能:
+    - 导入交易记录: python main.py import 交易文件.xlsx
+
+    ⚙️ API 管理:
     - 测试 API 连接: python main.py api test
-    - 同步交易记录: python main.py api sync --days 7
     - 查看活跃交易对: python main.py api symbols
     - 同步特定交易对: python main.py api sync-symbol BTCUSDT
     - 配置 API 密钥: python main.py api config
@@ -120,19 +118,7 @@ def report():
     """
     pass
 
-@report.command()
-@click.option('--since', default=None, help='只统计该日期之后的交易 (格式: YYYY-MM-DD)。')
-def summary(since):
-    """
-    显示全面的汇总统计报告。
-    """
-    click.echo("正在生成汇总统计报告...")
-    
-    stats = journal_core.generate_summary_report(since=since)
-    
-    # 格式化并显示报告
-    report_output = utilities.format_summary_report(stats, stats.get('time_range'))
-    click.echo(report_output)
+# report summary 命令已删除 - 请使用 'python main.py sync' 获得更完整的报告
 
 @report.command('list-trades')
 @click.option('--symbol', default=None, help='只显示特定交易对的记录 (例如: BTCUSDT)。')
@@ -175,43 +161,7 @@ def show_symbols():
 
 
 
-@cli.command()
-@click.argument('symbol')
-@click.option('--details', is_flag=True, help='显示该币种的所有交易记录详情')
-def currency(symbol, details):
-    """
-    查看指定币种的净盈亏详情
-    
-    SYMBOL: 币种符号 (例如: BTC, ETH, XRP)
-    """
-    try:
-        if details:
-            # 显示详细交易记录
-            result = journal_core.get_currency_trades_details(symbol.upper())
-        else:
-            # 显示汇总分析
-            result = journal_core.analyze_currency_pnl(symbol.upper())
-        click.echo(result)
-    except Exception as e:
-        click.echo(f"❌ 查看币种数据失败: {e}")
-
-@cli.command('list-currencies')
-def list_currencies():
-    """列出所有已交易的币种"""
-    try:
-        result = journal_core.list_all_currencies()
-        
-        if result['success']:
-            click.echo("📊 已交易币种列表:")
-            click.echo("=" * 50)
-            for currency_info in result['currencies']:
-                click.echo(f"{currency_info['currency']:8} - {currency_info['trades']:3}笔交易 - "
-                          f"净盈亏: {currency_info['pnl']:>10.2f} USDT")
-        else:
-            click.echo(f"❌ 获取币种列表失败: {result['error']}")
-            
-    except Exception as e:
-        click.echo(f"❌ 获取币种列表时发生错误: {e}")
+# currency 和 list-currencies 命令已删除 - 请使用 'python main.py sync' 查看完整的币种分析和交易明细
 
 @cli.group()
 def api():
@@ -246,31 +196,7 @@ def test_api():
     except Exception as e:
         click.echo(f"❌ 测试 API 连接时发生错误: {e}")
 
-@api.command('sync')
-@click.option('--days', default=7, type=int, help='同步最近N天的交易记录 (默认: 7)')
-def sync_trades(days):
-    """
-    从币安 API 同步交易记录
-    """
-    try:
-        click.echo(f"正在从币安 API 同步最近 {days} 天的交易记录...")
-        
-        result = journal_core.sync_binance_trades(days=days)
-        
-        if result['success']:
-            click.echo("✅ 交易记录同步成功!")
-            click.echo(f"📅 同步时间范围: {result['sync_period']} (从 {result['since_date']} 开始)")
-            click.echo(f"📊 新增交易记录: {result['new_count']} 条")
-            click.echo(f"⏭️  跳过重复记录: {result['duplicate_count']} 条")
-            click.echo(f"📈 数据库总记录数: {result['total_count']} 条")
-            
-            if result['new_count'] > 0:
-                click.echo("\n💡 建议使用 'python main.py report summary' 查看更新后的统计报告")
-        else:
-            click.echo(f"❌ 同步失败: {result['error']}")
-            
-    except Exception as e:
-        click.echo(f"❌ 同步交易记录时发生错误: {e}")
+# api sync 命令已删除 - 请使用 'python main.py sync' 进行数据同步和查看报告
 
 @api.command('symbols')
 def show_active_symbols():
@@ -711,6 +637,208 @@ def scheduler_config():
         
     except Exception as e:
         click.echo(f"❌ 查看配置失败: {e}")
+
+# ============================================================================
+# 🚀 sync超级命令 - 第五版整合命令（数据同步+详细统计报告+交易明细）
+# ============================================================================
+
+@cli.command()
+@click.option('--days', default=None, type=int, help='同步最近N天的数据 (默认: 智能增量同步)')
+def sync(days):
+    """
+    📊 数据同步和统计报告
+
+    智能同步最新交易数据并生成包含详细交易明细的完整统计报告
+    """
+    console = Console()
+
+    try:
+        # 步骤1: 智能计算同步天数
+        from core import database as database_setup
+        from datetime import datetime, timedelta
+
+        if days is None:
+            # 智能同步: 从上次同步时间开始
+            try:
+                last_sync = database_setup.get_last_sync_timestamp()
+                if last_sync:
+                    # 计算增量同步天数
+                    last_sync_time = datetime.fromisoformat(last_sync)
+                    time_diff = datetime.now() - last_sync_time
+                    actual_days = int(time_diff.total_seconds() / 86400) + 1
+
+                    sync_days = actual_days
+                    console.print(f"🧠 智能同步模式: 从上次同步时间 ({last_sync_time.strftime('%Y-%m-%d %H:%M')}) 开始")
+                    console.print(f"📅 本次同步范围: {sync_days} 天")
+                else:
+                    # 首次同步，使用30天
+                    sync_days = 30
+                    console.print("🆕 首次同步模式: 获取最近30天数据")
+            except Exception as e:
+                # 如果获取同步时间戳失败，使用默认7天
+                sync_days = 7
+                console.print(f"⚠️  无法获取上次同步时间 ({e})，使用默认7天同步")
+        else:
+            # 用户指定天数
+            sync_days = days
+            console.print(f"🎯 手动同步模式: 最近 {sync_days} 天")
+
+        # 步骤2: 数据同步
+        console.print("🔄 [bold cyan]正在同步最新交易数据...[/]")
+
+        # 检查是否配置了API
+        config_exists = os.path.exists('config/config.ini')
+        sync_success = False
+
+        if config_exists:
+            try:
+                # 尝试API同步
+                result = journal_core.sync_binance_trades(days=sync_days)
+                if result['success']:
+                    new_count = result.get('new_count', 0)
+                    if new_count > 0:
+                        console.print(f"✅ 同步成功！新增 {new_count} 条交易记录")
+                    else:
+                        console.print("✅ 同步完成，数据已是最新状态")
+
+                    # 无论是否有新交易都更新时间戳（表示检查过了）
+                    try:
+                        database_setup.update_last_sync_timestamp()
+                        if new_count > 0:
+                            console.print("📝 已更新同步时间戳")
+                    except:
+                        pass  # 忽略时间戳更新错误
+
+                    sync_success = True
+                else:
+                    console.print(f"⚠️  API同步失败: {result.get('error', '未知错误')}")
+                    console.print("💡 将显示现有数据的统计报告")
+            except Exception as e:
+                console.print(f"⚠️  API同步出错: {e}")
+                console.print("💡 将显示现有数据的统计报告")
+        else:
+            console.print("⚠️  未找到API配置文件")
+            console.print("💡 使用 'python main.py api config' 进行API配置")
+            console.print("💡 或使用 'python main.py import <文件>' 导入Excel数据")
+
+        # 步骤3: 生成详细统计报告 (无论是否同步成功都显示)
+        console.print(f"\n📊 [bold cyan]交易统计报告 (全部历史交易)[/]")
+        console.print("=" * 50)
+
+        # 获取全部历史交易统计数据
+        all_stats = journal_core.generate_summary_report()
+
+        if all_stats and all_stats.get('total_trades', 0) > 0:
+            # === 核心指标 ===
+            console.print("=== [bold cyan]核心指标[/] ===")
+            console.print(f"📈 历史总盈亏: {all_stats.get('total_pnl', 0):+,.2f} USDT")
+            console.print(f"🎯 历史胜率:   {all_stats.get('win_rate', 0)*100:.1f}%")
+            console.print(f"💪 历史盈亏比: {all_stats.get('profit_loss_ratio', 0):.2f}")
+            console.print(f"📊 历史交易:   {all_stats.get('total_trades', 0)} 笔")
+
+            # 显示收益状态
+            pnl = all_stats.get('total_pnl', 0)
+            if pnl > 0:
+                console.print("📈 [bold green]整体盈利[/] 🎉")
+            elif pnl < 0:
+                console.print("📉 [bold red]整体亏损[/] ⚠️")
+            else:
+                console.print("➖ 盈亏平衡")
+
+            # === 交易量统计 ===
+            console.print(f"\n=== [bold cyan]交易量统计[/] ===")
+            console.print(f"📊 买入交易:   {all_stats.get('buy_trades_count', 0)} 笔")
+            console.print(f"📊 卖出交易:   {all_stats.get('sell_trades_count', 0)} 笔")
+            console.print(f"💰 总买入量:   {all_stats.get('total_buy_volume', 0):,.2f} USDT")
+            console.print(f"💰 总卖出量:   {all_stats.get('total_sell_volume', 0):,.2f} USDT")
+            console.print(f"💸 总手续费:   {all_stats.get('total_fees', 0):,.4f} USDT")
+
+            # === 按币种分组统计 ===
+            console.print(f"\n=== [bold cyan]按币种分组统计[/] ===")
+            try:
+                currencies_result = journal_core.list_all_currencies()
+                if currencies_result.get('success') and currencies_result.get('currencies'):
+                    # 按盈亏排序，盈利的在前
+                    currencies = currencies_result['currencies']
+                    currencies.sort(key=lambda x: x['pnl'], reverse=True)
+
+                    for currency_info in currencies[:8]:  # 显示前8个币种
+                        pnl = currency_info['pnl']
+                        pnl_symbol = "+" if pnl >= 0 else ""
+                        pnl_color = "green" if pnl > 0 else "red" if pnl < 0 else "white"
+                        console.print(f"💎 {currency_info['currency']:6} - {currency_info['trades']:2}笔 - [{pnl_color}]{pnl_symbol}{pnl:>8.2f} USDT[/]")
+
+                    if len(currencies) > 8:
+                        console.print(f"   ... 还有 {len(currencies) - 8} 个币种")
+
+                    # === 主要币种详细分析 ===
+                    # 只显示交易数量>=5且盈亏绝对值>=100的主要币种
+                    major_currencies = [c for c in currencies if c['trades'] >= 5 and abs(c['pnl']) >= 100]
+                    if major_currencies[:3]:  # 最多显示前3个主要币种
+                        console.print(f"\n=== [bold cyan]主要币种详细分析[/] ===")
+                        for currency_info in major_currencies[:3]:
+                            try:
+                                currency = currency_info['currency']
+                                console.print(f"\n🔍 [bold yellow]{currency} 详细分析[/]")
+                                console.print("-" * 40)
+
+                                # 获取详细分析数据
+                                all_trades = database_setup.get_all_trades()
+                                pnl_data = utilities.calculate_currency_pnl(all_trades, currency)
+
+                                if pnl_data and pnl_data.get('total_trades', 0) > 0:
+                                    # 币种分析显示
+                                    console.print(f"📊 交易笔数: {pnl_data['total_trades']} 笔 (买:{pnl_data['buy_trades']} / 卖:{pnl_data['sell_trades']})")
+                                    console.print(f"💰 已实现盈亏: {pnl_data['total_pnl']:+,.2f} USDT")
+                                    console.print(f"🎯 胜率: {pnl_data['win_rate']*100:.1f}%")
+
+                                    if pnl_data.get('current_holdings', 0) > 0:
+                                        console.print(f"📦 当前持仓: {pnl_data['current_holdings']:.6f} {currency}")
+                                        console.print(f"💲 持仓成本价: {pnl_data['avg_cost_price']:,.2f} USDT/{currency}")
+
+                                    # 显示交易明细
+                                    console.print(f"\n📋 [bold yellow]{currency} 交易明细:[/]")
+                                    try:
+                                        details_result = journal_core.get_currency_trades_details(currency)
+                                        console.print(details_result)
+                                    except Exception as detail_error:
+                                        console.print(f"⚠️  获取交易明细失败: {detail_error}")
+
+                            except Exception as e:
+                                console.print(f"⚠️  {currency} 详细分析失败: {e}")
+                else:
+                    console.print("⚠️  暂无币种数据")
+            except Exception as e:
+                console.print(f"⚠️  币种统计获取失败: {e}")
+
+            # 显示最近30天统计作为补充信息
+            try:
+                recent_30_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+                recent_stats = journal_core.generate_summary_report(since=recent_30_date)
+                if recent_stats and recent_stats.get('total_trades', 0) > 0:
+                    console.print(f"\n📅 [dim]最近30天概况:[/]")
+                    console.print(f"   📊 近期交易: {recent_stats.get('total_trades', 0)} 笔")
+                    console.print(f"   📈 近期盈亏: {recent_stats.get('total_pnl', 0):+,.2f} USDT")
+            except:
+                pass  # 忽略近期统计错误
+
+            # 给出操作建议
+            console.print("\n💡 [bold yellow]操作建议:[/]")
+            console.print("  • 使用 'python main.py analyze' 进行技术分析")
+            console.print("  • 使用 'python main.py currency <币种>' 查看单币种详细信息")
+            if sync_success:
+                console.print("  • 使用 'python main.py sync --days <天数>' 指定同步时间范围")
+            else:
+                console.print("  • 使用 'python main.py api config' 配置API以启用自动同步")
+        else:
+            console.print("⚠️  暂无交易数据")
+            console.print("\n💡 [bold yellow]数据源配置建议:[/]")
+            console.print("  • 使用 'python main.py api config' 配置API数据源")
+            console.print("  • 或使用 'python main.py import <文件>' 导入Excel数据")
+
+    except Exception as e:
+        console.print(f"\n❌ 同步过程中发生错误: {e}")
+        console.print("💡 请检查网络连接和配置")
 
 def get_manager() -> journal_core.TradingJournalManager:
     """获取交易日志管理器实例"""

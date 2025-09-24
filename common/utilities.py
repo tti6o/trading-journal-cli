@@ -407,7 +407,32 @@ def format_currency_report(stats: dict) -> str:
     if stats['current_holding'] > 0:
         avg_cost = stats['total_buy_amount'] / stats['total_buy_quantity'] if stats['total_buy_quantity'] > 0 else 0
         lines.append(f"  持仓成本价:    {avg_cost:.4f} USDT/{currency}")
-        lines.append(f"  持仓价值:      {format_currency(stats['current_holding'] * avg_cost)}")
+
+        # 尝试获取最新市场价格
+        try:
+            from core import journal as journal_core
+            current_prices = journal_core.get_current_prices([currency])
+            current_price = current_prices.get(currency, 0.0)
+
+            if current_price > 0:
+                current_value = stats['current_holding'] * current_price
+                lines.append(f"  当前价格:      {current_price:.4f} USDT/{currency}")
+                lines.append(f"  持仓价值:      {format_currency(current_value)} (按当前价格)")
+
+                # 计算未实现盈亏
+                cost_value = stats['current_holding'] * avg_cost
+                unrealized_pnl = current_value - cost_value
+                pnl_symbol = "+" if unrealized_pnl >= 0 else ""
+                pnl_color = "🟢" if unrealized_pnl > 0 else "🔴" if unrealized_pnl < 0 else "⚪"
+                lines.append(f"  未实现盈亏:    {pnl_color} {pnl_symbol}{format_currency(unrealized_pnl)}")
+            else:
+                # 无法获取最新价格，使用成本价
+                lines.append(f"  持仓价值:      {format_currency(stats['current_holding'] * avg_cost)} (按成本价)")
+                lines.append(f"  💡 提示:       网络或API问题，无法获取实时价格")
+        except Exception as e:
+            # 出错时使用成本价
+            lines.append(f"  持仓价值:      {format_currency(stats['current_holding'] * avg_cost)} (按成本价)")
+            lines.append(f"  ⚠️ 提示:       价格获取服务暂时不可用")
     
     lines.append("=" * 60)
     
@@ -531,8 +556,12 @@ def setup_logging():
         # 确保能找到配置文件，即使从不同目录运行
         config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.ini')
         if not os.path.exists(config_path):
-            print(f"警告: 配置文件 {config_path} 未找到，将使用默认日志配置。")
+            # print(f"警告: 配置文件 {config_path} 未找到，将使用默认日志配置。")
             logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            # 禁用第三方库的详细日志
+            logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+            logging.getLogger('urllib3').setLevel(logging.WARNING)
+            logging.getLogger('ccxt').setLevel(logging.WARNING)
             return
 
         config.read(config_path, encoding='utf-8')
@@ -558,13 +587,23 @@ def setup_logging():
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=handlers
         )
-        
-        logging.info(f"日志记录器已设置，级别为 {log_level_str}")
+
+        # 静默模式，不输出日志设置信息
+        # logging.info(f"日志记录器已设置，级别为 {log_level_str}")
+
+        # 禁用第三方库的详细日志
+        logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+        logging.getLogger('ccxt').setLevel(logging.WARNING)
 
     except Exception as e:
         print(f"设置日志时发生错误: {e}")
         # 如果出错，提供一个基础的配置
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        # 即使出错也要禁用第三方库的详细日志
+        logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+        logging.getLogger('ccxt').setLevel(logging.WARNING)
 
 def format_summary_report(stats: dict, time_range: str = "所有时间") -> str:
     """
@@ -827,7 +866,32 @@ def format_trades_details(currency: str, trades: list) -> str:
     
     if current_quantity > 0:
         lines.append(f"  当前平均成本: {average_cost:.4f} USDT/{currency}")
-        lines.append(f"  持仓价值: {current_quantity * average_cost:.2f} USDT")
+
+        # 尝试获取最新市场价格
+        try:
+            from core import journal as journal_core
+            current_prices = journal_core.get_current_prices([currency])
+            current_price = current_prices.get(currency, 0.0)
+
+            if current_price > 0:
+                current_value = current_quantity * current_price
+                lines.append(f"  当前市场价格: {current_price:.4f} USDT/{currency}")
+                lines.append(f"  持仓价值: {current_value:.2f} USDT (按当前价格)")
+
+                # 计算未实现盈亏
+                cost_value = current_quantity * average_cost
+                unrealized_pnl = current_value - cost_value
+                pnl_symbol = "+" if unrealized_pnl >= 0 else ""
+                pnl_emoji = "🟢" if unrealized_pnl > 0 else "🔴" if unrealized_pnl < 0 else "⚪"
+                lines.append(f"  未实现盈亏: {pnl_emoji} {pnl_symbol}{unrealized_pnl:.2f} USDT")
+            else:
+                # 无法获取最新价格，使用成本价
+                lines.append(f"  持仓价值: {current_quantity * average_cost:.2f} USDT (按成本价)")
+                lines.append(f"  💡 提示: 网络或API问题，无法获取实时价格")
+        except Exception as e:
+            # 出错时使用成本价
+            lines.append(f"  持仓价值: {current_quantity * average_cost:.2f} USDT (按成本价)")
+            lines.append(f"  ⚠️ 提示: 价格获取服务暂时不可用")
     
     if total_pnl != 0:
         pnl_symbol = "+" if total_pnl > 0 else ""

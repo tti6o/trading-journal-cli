@@ -206,17 +206,18 @@ class ExchangeClient(ABC):
     def sync_trades(self, days: int = 7) -> SyncResult:
         """
         同步交易记录（模板方法）
-        
+
         Args:
             days: 同步最近几天的数据
-            
+
         Returns:
             SyncResult: 同步结果对象
         """
         try:
             # 计算开始时间
+            from datetime import timedelta
             since = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            since = since.replace(day=since.day - days)
+            since = since - timedelta(days=days)
             
             # 获取历史交易对列表（用于改进交易对检测）
             historical_symbols = None
@@ -266,7 +267,7 @@ class ExchangeClient(ABC):
         try:
             # 计算开始时间
             since = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            since = since.replace(day=since.day - days)
+            since = since - timedelta(days=days)
             
             # 获取交易数据
             trades = self.fetch_symbol_trades(symbol, since=since)

@@ -7,14 +7,37 @@ RSI技术分析服务模块 (MVP版本)
 
 import logging
 import pandas as pd
-import pandas_ta as ta
+# 使用numpy实现基础技术指标
+# import pandas_ta as ta  # 暂时注释掉，使用自定义实现
 import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
-from scipy.signal import find_peaks # Added missing import
+try:
+    from scipy.signal import find_peaks
+except ImportError:
+    def find_peaks(data, height=None):
+        """简单的峰值查找实现"""
+        peaks = []
+        for i in range(1, len(data) - 1):
+            if data[i] > data[i-1] and data[i] > data[i+1]:
+                if height is None or data[i] >= height:
+                    peaks.append(i)
+        return peaks, {}
 
 logger = logging.getLogger(__name__)
+
+def calculate_rsi(prices, period=14):
+    """
+    计算RSI (Relative Strength Index)
+    """
+    prices = pd.Series(prices)
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
 
 
 @dataclass
@@ -82,7 +105,7 @@ class RsiAnalyzer:
                 return None
             
             # 2. 计算RSI指标
-            rsi_series = ta.rsi(ohlcv_df['close'], length=self.rsi_period)
+            rsi_series = calculate_rsi(ohlcv_df['close'], period=self.rsi_period)
             
             if rsi_series.isna().all():
                 logger.warning(f"{symbol}: RSI计算失败")
