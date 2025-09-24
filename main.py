@@ -703,11 +703,13 @@ def sync(days):
 
                     # 无论是否有新交易都更新时间戳（表示检查过了）
                     try:
-                        database_setup.update_last_sync_timestamp()
-                        if new_count > 0:
+                        success = database_setup.update_last_sync_timestamp()
+                        if success:
                             console.print("📝 已更新同步时间戳")
-                    except:
-                        pass  # 忽略时间戳更新错误
+                        else:
+                            console.print("⚠️  同步时间戳更新失败")
+                    except Exception as e:
+                        console.print(f"⚠️  同步时间戳更新出错: {e}")
 
                     sync_success = True
                 else:

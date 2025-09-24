@@ -266,6 +266,7 @@ class ExchangeClient(ABC):
         """
         try:
             # 计算开始时间
+            from datetime import timedelta
             since = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
             since = since - timedelta(days=days)
             

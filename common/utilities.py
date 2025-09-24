@@ -404,7 +404,26 @@ def format_currency_report(stats: dict) -> str:
     lines.append(f"  已实现盈亏:    {pnl_color}{format_currency(stats['total_pnl'])}")
     lines.append(f"  胜率:          {format_percentage(stats['win_rate'])}")
     
-    if stats['current_holding'] > 0:
+    # 获取API实际持仓（如果可用）
+    actual_holding = None
+    try:
+        from core import journal as journal_core
+        manager = journal_core.get_manager()
+        account_info = manager.get_exchange_client().get_account_info()
+
+        # 查找对应币种的实际余额
+        for balance in account_info.balances:
+            if balance.asset.upper() == currency.upper() and balance.total > 0:
+                actual_holding = float(balance.total)
+                break
+    except:
+        pass  # 如果获取API余额失败，使用交易记录计算的持仓
+
+    # 使用实际持仓或交易计算持仓
+    display_holding = actual_holding if actual_holding is not None else stats['current_holding']
+    trade_calculated_holding = stats['current_holding']
+
+    if display_holding > 0:
         avg_cost = stats['total_buy_amount'] / stats['total_buy_quantity'] if stats['total_buy_quantity'] > 0 else 0
         lines.append(f"  持仓成本价:    {avg_cost:.4f} USDT/{currency}")
 
@@ -415,23 +434,40 @@ def format_currency_report(stats: dict) -> str:
             current_price = current_prices.get(currency, 0.0)
 
             if current_price > 0:
-                current_value = stats['current_holding'] * current_price
+                current_value = display_holding * current_price
                 lines.append(f"  当前价格:      {current_price:.4f} USDT/{currency}")
+
+                # 区分显示不同来源的持仓
+                if actual_holding is not None:
+                    lines.append(f"  实际持仓:      {display_holding:.4f} {currency} (API余额)")
+                    if abs(actual_holding - trade_calculated_holding) > 0.1:
+                        lines.append(f"  交易计算持仓:  {trade_calculated_holding:.4f} {currency} (仅现货交易)")
+                        lines.append(f"  持仓差异:      {actual_holding - trade_calculated_holding:+.4f} {currency} (其他来源)")
+                else:
+                    lines.append(f"  持仓数量:      {display_holding:.4f} {currency} (交易记录计算)")
+
                 lines.append(f"  持仓价值:      {format_currency(current_value)} (按当前价格)")
 
-                # 计算未实现盈亏
-                cost_value = stats['current_holding'] * avg_cost
-                unrealized_pnl = current_value - cost_value
-                pnl_symbol = "+" if unrealized_pnl >= 0 else ""
-                pnl_color = "🟢" if unrealized_pnl > 0 else "🔴" if unrealized_pnl < 0 else "⚪"
-                lines.append(f"  未实现盈亏:    {pnl_color} {pnl_symbol}{format_currency(unrealized_pnl)}")
+                # 计算未实现盈亏（基于交易成本）
+                if trade_calculated_holding > 0:
+                    trade_cost_value = trade_calculated_holding * avg_cost
+                    trade_current_value = trade_calculated_holding * current_price
+                    trade_unrealized_pnl = trade_current_value - trade_cost_value
+                    pnl_symbol = "+" if trade_unrealized_pnl >= 0 else ""
+                    pnl_color = "🟢" if trade_unrealized_pnl > 0 else "🔴" if trade_unrealized_pnl < 0 else "⚪"
+                    lines.append(f"  交易未实现盈亏: {pnl_color} {pnl_symbol}{format_currency(trade_unrealized_pnl)} (仅现货交易部分)")
             else:
                 # 无法获取最新价格，使用成本价
-                lines.append(f"  持仓价值:      {format_currency(stats['current_holding'] * avg_cost)} (按成本价)")
+                if actual_holding is not None:
+                    lines.append(f"  实际持仓:      {display_holding:.4f} {currency} (API余额)")
+                    if abs(actual_holding - trade_calculated_holding) > 0.1:
+                        lines.append(f"  交易计算持仓:  {trade_calculated_holding:.4f} {currency}")
+                        lines.append(f"  持仓差异:      {actual_holding - trade_calculated_holding:+.4f} {currency}")
+                lines.append(f"  持仓价值:      {format_currency(display_holding * avg_cost)} (按成本价)")
                 lines.append(f"  💡 提示:       网络或API问题，无法获取实时价格")
         except Exception as e:
             # 出错时使用成本价
-            lines.append(f"  持仓价值:      {format_currency(stats['current_holding'] * avg_cost)} (按成本价)")
+            lines.append(f"  持仓价值:      {format_currency(display_holding * avg_cost)} (按成本价)")
             lines.append(f"  ⚠️ 提示:       价格获取服务暂时不可用")
     
     lines.append("=" * 60)
@@ -862,9 +898,33 @@ def format_trades_details(currency: str, trades: list) -> str:
     lines.append(f"  买入次数: {len(buy_trades)}  |  卖出次数: {len(sell_trades)}")
     lines.append(f"  总买入量: {total_buy_qty:.4f} {currency}")
     lines.append(f"  总卖出量: {total_sell_qty:.4f} {currency}")
-    lines.append(f"  当前持仓: {current_quantity:.4f} {currency}")
-    
-    if current_quantity > 0:
+    lines.append(f"  交易计算持仓: {current_quantity:.4f} {currency}")
+
+    # 获取API实际持仓（如果可用）
+    actual_holding = None
+    try:
+        from core import journal as journal_core
+        manager = journal_core.get_manager()
+        account_info = manager.get_exchange_client().get_account_info()
+
+        # 查找对应币种的实际余额
+        for balance in account_info.balances:
+            if balance.asset.upper() == currency.upper() and balance.total > 0:
+                actual_holding = float(balance.total)
+                break
+    except:
+        pass  # 如果获取API余额失败，使用交易记录计算的持仓
+
+    # 显示实际持仓信息
+    if actual_holding is not None:
+        lines.append(f"  实际持仓: {actual_holding:.4f} {currency} (API余额)")
+        if abs(actual_holding - current_quantity) > 0.1:
+            lines.append(f"  持仓差异: {actual_holding - current_quantity:+.4f} {currency} (其他来源)")
+        display_holding = actual_holding
+    else:
+        display_holding = current_quantity
+
+    if display_holding > 0:
         lines.append(f"  当前平均成本: {average_cost:.4f} USDT/{currency}")
 
         # 尝试获取最新市场价格
@@ -874,23 +934,28 @@ def format_trades_details(currency: str, trades: list) -> str:
             current_price = current_prices.get(currency, 0.0)
 
             if current_price > 0:
-                current_value = current_quantity * current_price
+                # 显示市场价格
                 lines.append(f"  当前市场价格: {current_price:.4f} USDT/{currency}")
-                lines.append(f"  持仓价值: {current_value:.2f} USDT (按当前价格)")
 
-                # 计算未实现盈亏
-                cost_value = current_quantity * average_cost
-                unrealized_pnl = current_value - cost_value
-                pnl_symbol = "+" if unrealized_pnl >= 0 else ""
-                pnl_emoji = "🟢" if unrealized_pnl > 0 else "🔴" if unrealized_pnl < 0 else "⚪"
-                lines.append(f"  未实现盈亏: {pnl_emoji} {pnl_symbol}{unrealized_pnl:.2f} USDT")
+                # 显示总持仓价值（使用实际持仓）
+                total_value = display_holding * current_price
+                lines.append(f"  总持仓价值: {total_value:.2f} USDT (按当前价格)")
+
+                # 计算交易部分的未实现盈亏
+                if current_quantity > 0:
+                    trade_cost_value = current_quantity * average_cost
+                    trade_current_value = current_quantity * current_price
+                    trade_unrealized_pnl = trade_current_value - trade_cost_value
+                    pnl_symbol = "+" if trade_unrealized_pnl >= 0 else ""
+                    pnl_emoji = "🟢" if trade_unrealized_pnl > 0 else "🔴" if trade_unrealized_pnl < 0 else "⚪"
+                    lines.append(f"  交易未实现盈亏: {pnl_emoji} {pnl_symbol}{trade_unrealized_pnl:.2f} USDT (仅现货交易部分)")
             else:
                 # 无法获取最新价格，使用成本价
-                lines.append(f"  持仓价值: {current_quantity * average_cost:.2f} USDT (按成本价)")
+                lines.append(f"  总持仓价值: {display_holding * average_cost:.2f} USDT (按成本价)")
                 lines.append(f"  💡 提示: 网络或API问题，无法获取实时价格")
-        except Exception as e:
+        except Exception:
             # 出错时使用成本价
-            lines.append(f"  持仓价值: {current_quantity * average_cost:.2f} USDT (按成本价)")
+            lines.append(f"  总持仓价值: {display_holding * average_cost:.2f} USDT (按成本价)")
             lines.append(f"  ⚠️ 提示: 价格获取服务暂时不可用")
     
     if total_pnl != 0:

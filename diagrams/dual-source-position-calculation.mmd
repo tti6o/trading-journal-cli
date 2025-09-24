@@ -1,0 +1,142 @@
+flowchart TB
+    subgraph "双源持仓计算系统"
+        direction TB
+
+        subgraph "数据源1: 交易记录计算"
+            TR[交易记录 SQLite数据库]
+            TR1[buy_quantity - 买入数量]
+            TR2[sell_quantity - 卖出数量]
+            TR3[price - 交易价格]
+            TR4[fee - 手续费]
+
+            TR --> TR1
+            TR --> TR2
+            TR --> TR3
+            TR --> TR4
+        end
+
+        subgraph "数据源2: API实时余额"
+            API[币安API账户信息]
+            API1[free - 可用余额]
+            API2[locked - 锁定余额]
+            API3[total = free + locked]
+
+            API --> API1
+            API --> API2
+            API --> API3
+        end
+
+        subgraph "交易记录计算引擎"
+            CALC[加权平均成本法计算]
+            CALC1[净持仓 = Σ买入量 - Σ卖出量]
+            CALC2[总成本 = Σ(买入量 × 价格) + 手续费]
+            CALC3[平均成本价 = 总成本 / 净持仓]
+            CALC4[未实现盈亏 = (当前价-成本价) × 持仓量]
+
+            CALC --> CALC1
+            CALC --> CALC2
+            CALC --> CALC3
+            CALC --> CALC4
+        end
+
+        subgraph "智能整合算法"
+            MERGE[数据整合与差异分析]
+            MERGE1[优先使用API实际余额]
+            MERGE2[计算持仓差异]
+            MERGE3[差异原因分析]
+            MERGE4[透明化展示策略]
+
+            MERGE --> MERGE1
+            MERGE --> MERGE2
+            MERGE --> MERGE3
+            MERGE --> MERGE4
+        end
+
+        subgraph "差异来源识别"
+            DIFF[持仓差异可能原因]
+            DIFF1[充值/提现操作]
+            DIFF2[手续费扣除]
+            DIFF3[其他交易所转账]
+            DIFF4[空投/分叉币]
+            DIFF5[数据同步时间差]
+
+            DIFF --> DIFF1
+            DIFF --> DIFF2
+            DIFF --> DIFF3
+            DIFF --> DIFF4
+            DIFF --> DIFF5
+        end
+
+        subgraph "报告生成系统"
+            REPORT[持仓报告格式化]
+            REPORT1[实际持仓 - API余额]
+            REPORT2[交易计算持仓 - 历史记录]
+            REPORT3[持仓价值 - API余额×当前价]
+            REPORT4[差异标识 - 红色/绿色标注]
+            REPORT5[可能原因提示]
+
+            REPORT --> REPORT1
+            REPORT --> REPORT2
+            REPORT --> REPORT3
+            REPORT --> REPORT4
+            REPORT --> REPORT5
+        end
+    end
+
+    subgraph "核心算法流程"
+        direction LR
+
+        F1[获取交易记录] --> F2[计算理论持仓]
+        F2 --> F3[获取API实际余额]
+        F3 --> F4[比较两种持仓]
+        F4 --> F5[计算差异值]
+        F5 --> F6[分析差异原因]
+        F6 --> F7[生成透明报告]
+    end
+
+    subgraph "稳定币标准化处理"
+        STABLE[稳定币标准化]
+        STABLE1[FDUSD → USDT]
+        STABLE2[USDC → USDT]
+        STABLE3[BUSD → USDT]
+        STABLE4[统一计价基础]
+
+        STABLE --> STABLE1
+        STABLE --> STABLE2
+        STABLE --> STABLE3
+        STABLE --> STABLE4
+    end
+
+    %% 数据流关系
+    TR --> CALC
+    API --> MERGE
+    CALC1 --> MERGE2
+    API3 --> MERGE1
+    MERGE --> REPORT
+
+    %% 处理流程
+    CALC --> F2
+    API --> F3
+    MERGE2 --> F5
+    DIFF --> F6
+
+    %% 稳定币处理
+    TR --> STABLE
+    STABLE --> CALC
+
+    %% 样式定义
+    classDef dataSource fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef calculation fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef integration fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef analysis fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef reporting fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef process fill:#fffde7,stroke:#f9a825,stroke-width:2px
+    classDef stable fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+
+    class TR,TR1,TR2,TR3,TR4,API,API1,API2,API3 dataSource
+    class CALC,CALC1,CALC2,CALC3,CALC4 calculation
+    class MERGE,MERGE1,MERGE2,MERGE3,MERGE4 integration
+    class DIFF,DIFF1,DIFF2,DIFF3,DIFF4,DIFF5 analysis
+    class REPORT,REPORT1,REPORT2,REPORT3,REPORT4,REPORT5 reporting
+    class F1,F2,F3,F4,F5,F6,F7 process
+    class STABLE,STABLE1,STABLE2,STABLE3,STABLE4 stable

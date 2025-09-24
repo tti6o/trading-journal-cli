@@ -1,0 +1,128 @@
+flowchart TB
+    subgraph "CLI层 (命令行接口)"
+        A[main.py]
+        A1[init命令 - 数据库初始化]
+        A2[import命令 - Excel导入]
+        A3[sync命令 - 数据同步+统计报告]
+        A4[api命令组 - API管理]
+        A5[technical命令组 - 技术分析]
+        A6[scheduler命令组 - 定时任务]
+        A7[notification命令组 - 邮件通知]
+        A8[report命令组 - 报告生成]
+
+        A --> A1
+        A --> A2
+        A --> A3
+        A --> A4
+        A --> A5
+        A --> A6
+        A --> A7
+        A --> A8
+    end
+
+    subgraph "业务逻辑层 (核心功能)"
+        B[core/journal.py]
+        B1[init_database - 数据库初始化]
+        B2[import_trades - 交易导入]
+        B3[sync_trades_with_api - API同步]
+        B4[calculate_currency_pnl - 盈亏计算]
+        B5[generate_summary_report - 统计报告]
+        B6[list_all_currencies - 币种列表]
+
+        B --> B1
+        B --> B2
+        B --> B3
+        B --> B4
+        B --> B5
+        B --> B6
+    end
+
+    subgraph "服务模块层 (专业服务)"
+        S1[services/technical_analysis.py - RSI/MACD/斐波那契分析]
+        S2[services/notification.py - 邮件通知服务]
+        S3[services/scheduler.py - 定时任务调度]
+        S4[services/signal_engine.py - 交易信号引擎]
+    end
+
+    subgraph "交易所客户端层 (数据获取)"
+        E1[exchange_client/base.py - 抽象基类]
+        E2[exchange_client/binance_client.py - 币安客户端]
+        E3[exchange_client/factory.py - 工厂模式]
+
+        E1 --> E2
+        E3 --> E2
+    end
+
+    subgraph "数据访问层 (数据存储)"
+        C[core/database.py]
+        C1[init_db - 创建表结构]
+        C2[insert_trade - 插入交易记录]
+        C3[get_all_trades - 查询所有交易]
+        C4[update_pnl - 更新盈亏]
+        C5[SQLite数据库]
+
+        C --> C1
+        C --> C2
+        C --> C3
+        C --> C4
+        C --> C5
+    end
+
+    subgraph "工具层 (通用功能)"
+        D[common/utilities.py]
+        D1[normalize_stablecoin_pairs - 稳定币标准化]
+        D2[calculate_currency_pnl - 盈亏计算工具]
+        D3[format_currency_report - 报告格式化]
+        D4[format_trades_details - 交易明细格式化]
+        D5[setup_logging - 日志配置]
+
+        D --> D1
+        D --> D2
+        D --> D3
+        D --> D4
+        D --> D5
+    end
+
+    %% 调用关系
+    A1 --> B1
+    A2 --> B2
+    A3 --> B3
+    A3 --> B5
+    A4 --> E3
+    A5 --> S4
+    A6 --> S3
+    A7 --> S2
+
+    B1 --> C1
+    B2 --> C2
+    B3 --> E3
+    B4 --> D2
+    B5 --> C3
+    B6 --> C3
+
+    S1 --> E2
+    S4 --> S1
+    S4 --> S2
+
+    E2 --> C2
+    E2 --> C4
+
+    B2 --> D1
+    B3 --> D1
+    B4 --> D3
+    B5 --> D4
+
+    %% 样式定义
+    classDef cliLayer fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef businessLayer fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef serviceLayer fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef exchangeLayer fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef dataLayer fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef utilityLayer fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+
+    class A,A1,A2,A3,A4,A5,A6,A7,A8 cliLayer
+    class B,B1,B2,B3,B4,B5,B6 businessLayer
+    class S1,S2,S3,S4 serviceLayer
+    class E1,E2,E3 exchangeLayer
+    class C,C1,C2,C3,C4,C5 dataLayer
+    class D,D1,D2,D3,D4,D5 utilityLayer

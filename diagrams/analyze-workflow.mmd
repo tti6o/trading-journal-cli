@@ -1,0 +1,85 @@
+flowchart TD
+    A[用户执行 python main.py technical run] --> B{检查配置文件}
+
+    B -->|配置存在| C[读取技术分析配置]
+    B -->|配置不存在| D[显示配置缺失提示]
+
+    C --> E[获取信号引擎实例]
+    E --> F[加载监控的交易对列表]
+
+    F --> G{有监控交易对}
+    G -->|有交易对| H[遍历交易对进行分析]
+    G -->|无交易对| I[使用默认交易对列表]
+
+    H --> J[单个交易对技术分析]
+    I --> J
+
+    J --> K[获取K线数据]
+    K --> L{数据获取成功}
+
+    L -->|成功| M[计算技术指标]
+    L -->|失败| N[记录错误,继续下一个]
+
+    M --> O[RSI分析]
+    O --> P[MACD分析]
+    P --> Q[斐波那契分析]
+    Q --> R[布林带分析]
+
+    R --> S[综合评估信号强度]
+    S --> T{发现交易信号}
+
+    T -->|发现信号| U[记录信号详情]
+    T -->|无信号| V[继续下一个交易对]
+
+    U --> W[格式化信号信息]
+    W --> X[添加到信号汇总]
+
+    N --> Y{还有更多交易对}
+    V --> Y
+    X --> Y
+
+    Y -->|是| J
+    Y -->|否| Z[分析完成统计]
+
+    Z --> AA{发现任何信号}
+    AA -->|发现信号| BB[准备邮件通知]
+    AA -->|无信号| CC[显示无信号提示]
+
+    BB --> DD[构建邮件内容]
+    DD --> EE[发送邮件通知]
+
+    EE --> FF{邮件发送成功}
+    FF -->|成功| GG[显示发送成功信息]
+    FF -->|失败| HH[显示发送失败信息]
+
+    CC --> II[显示分析结果摘要]
+    GG --> II
+    HH --> II
+
+    D --> JJ[显示配置指导]
+    II --> KK[记录分析日志]
+    JJ --> KK
+
+    KK --> LL[更新分析状态]
+    LL --> MM[正常结束]
+
+    style A fill:#e1f5fe
+    style C fill:#c8e6c9
+    style M fill:#4fc3f7
+    style O fill:#4fc3f7
+    style P fill:#4fc3f7
+    style Q fill:#4fc3f7
+    style R fill:#4fc3f7
+    style L fill:#ffecb3
+    style T fill:#ffecb3
+    style AA fill:#ffecb3
+    style FF fill:#ffecb3
+    style D fill:#ffcdd2
+    style N fill:#ffcdd2
+    style HH fill:#ffcdd2
+
+    classDef analysisModule fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    class O,P,Q,R,S,U,W,X analysisModule
+
+    classDef notificationModule fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    class BB,DD,EE,GG notificationModule
