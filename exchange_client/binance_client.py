@@ -7,6 +7,7 @@
 import ccxt
 import time
 import logging
+import requests
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
@@ -559,6 +560,15 @@ class BinanceClient(ExchangeClient):
         Raises:
             ExchangeAPIError: 获取价格失败
         """
+        # 首先尝试使用直接的 requests 方法（更稳定）
+        try:
+            price = self._get_price_via_requests(symbol)
+            if price > 0:
+                return price
+        except Exception as e:
+            logger.warning(f"使用 requests 获取 {symbol} 价格失败，尝试 CCXT: {e}")
+
+        # 如果 requests 失败，尝试使用 CCXT
         try:
             if not self.is_connected:
                 success, msg = self.connect()
@@ -573,6 +583,39 @@ class BinanceClient(ExchangeClient):
             logger.error(f"获取 {symbol} 价格失败: {e}")
             raise ExchangeAPIError(f"获取 {symbol} 价格失败: {str(e)}")
 
+    def _get_price_via_requests(self, symbol: str) -> float:
+        """
+        使用 requests 直接调用币安 API 获取价格（备用方法）
+
+        Args:
+            symbol: 交易对符号 (如 BTCUSDT)
+
+        Returns:
+            float: 当前价格
+
+        Raises:
+            Exception: 获取失败
+        """
+        try:
+            # 确保符号格式正确（移除斜杠）
+            clean_symbol = symbol.replace('/', '')
+
+            # 调用币安的价格API
+            url = f"https://api.binance.com/api/v3/ticker/price?symbol={clean_symbol}"
+            response = requests.get(url, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                price = float(data['price'])
+                logger.debug(f"通过 requests 获取 {symbol} 价格: {price}")
+                return price
+            else:
+                raise Exception(f"API 返回状态码: {response.status_code}")
+
+        except Exception as e:
+            logger.warning(f"requests 方法获取 {symbol} 价格失败: {e}")
+            raise
+
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, float]:
         """
         批量获取多个交易对的当前价格
@@ -583,6 +626,15 @@ class BinanceClient(ExchangeClient):
         Returns:
             Dict[str, float]: 交易对到价格的映射
         """
+        # 首先尝试使用 requests 批量获取（更稳定）
+        try:
+            prices = self._get_multiple_prices_via_requests(symbols)
+            if prices:
+                return prices
+        except Exception as e:
+            logger.warning(f"使用 requests 批量获取价格失败，尝试 CCXT: {e}")
+
+        # 如果 requests 失败，尝试使用 CCXT
         try:
             if not self.is_connected:
                 success, msg = self.connect()
@@ -612,6 +664,44 @@ class BinanceClient(ExchangeClient):
                 except:
                     prices[symbol] = 0.0
             return prices
+
+    def _get_multiple_prices_via_requests(self, symbols: List[str]) -> Dict[str, float]:
+        """
+        使用 requests 批量获取价格（备用方法）
+
+        Args:
+            symbols: 交易对符号列表
+
+        Returns:
+            Dict[str, float]: 交易对到价格的映射
+        """
+        try:
+            # 获取所有价格
+            url = "https://api.binance.com/api/v3/ticker/price"
+            response = requests.get(url, timeout=15)
+
+            if response.status_code != 200:
+                raise Exception(f"API 返回状态码: {response.status_code}")
+
+            all_prices = response.json()
+            price_dict = {item['symbol']: float(item['price']) for item in all_prices}
+
+            # 筛选所需的交易对
+            result = {}
+            for symbol in symbols:
+                clean_symbol = symbol.replace('/', '')
+                if clean_symbol in price_dict:
+                    result[symbol] = price_dict[clean_symbol]
+                    logger.debug(f"通过 requests 获取 {symbol} 价格: {result[symbol]}")
+                else:
+                    logger.warning(f"未找到 {symbol} 的价格")
+                    result[symbol] = 0.0
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"requests 批量获取价格失败: {e}")
+            raise
 
     def __str__(self) -> str:
         return f"BinanceClient(connected={self.is_connected}, sandbox={self.sandbox})" 
