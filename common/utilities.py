@@ -594,10 +594,28 @@ def setup_logging():
         if not os.path.exists(config_path):
             # print(f"警告: 配置文件 {config_path} 未找到，将使用默认日志配置。")
             logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            # 设置根日志器为WARNING级别，避免第三方库的DEBUG/INFO日志
+            logging.getLogger().setLevel(logging.WARNING)
+            # 但保持我们自己的模块为INFO级别
+            logging.getLogger('__main__').setLevel(logging.INFO)
+            logging.getLogger('core').setLevel(logging.INFO)
+            logging.getLogger('services').setLevel(logging.INFO)
+            logging.getLogger('common').setLevel(logging.INFO)
+            logging.getLogger('exchange_client').setLevel(logging.INFO)
             # 禁用第三方库的详细日志
             logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
             logging.getLogger('urllib3').setLevel(logging.WARNING)
             logging.getLogger('ccxt').setLevel(logging.WARNING)
+            logging.getLogger('choreographer').setLevel(logging.ERROR)  # 减少图表生成日志
+            logging.getLogger('choreographer.browser_async').setLevel(logging.ERROR)
+            logging.getLogger('choreographer.utils').setLevel(logging.ERROR)
+            logging.getLogger('kaleido').setLevel(logging.ERROR)  # Plotly静态图表生成器
+            logging.getLogger('matplotlib').setLevel(logging.WARNING)  # matplotlib图表库
+            logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+            logging.getLogger('asyncio').setLevel(logging.WARNING)  # 异步IO库
+            logging.getLogger('root').setLevel(logging.WARNING)  # 浏览器相关
+            logging.getLogger('browser_proc').setLevel(logging.ERROR)  # 浏览器进程日志
+            logging.getLogger('services.technical_analysis').setLevel(logging.WARNING)  # 减少技术分析DEBUG日志
             return
 
         config.read(config_path, encoding='utf-8')
@@ -624,6 +642,15 @@ def setup_logging():
             handlers=handlers
         )
 
+        # 设置根日志器为WARNING级别，避免第三方库的DEBUG/INFO日志
+        logging.getLogger().setLevel(logging.WARNING)
+        # 但保持我们自己的模块为用户配置的级别
+        logging.getLogger('__main__').setLevel(log_level)
+        logging.getLogger('core').setLevel(log_level)
+        logging.getLogger('services').setLevel(log_level)
+        logging.getLogger('common').setLevel(log_level)
+        logging.getLogger('exchange_client').setLevel(log_level)
+
         # 静默模式，不输出日志设置信息
         # logging.info(f"日志记录器已设置，级别为 {log_level_str}")
 
@@ -631,15 +658,43 @@ def setup_logging():
         logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
         logging.getLogger('urllib3').setLevel(logging.WARNING)
         logging.getLogger('ccxt').setLevel(logging.WARNING)
+        logging.getLogger('choreographer').setLevel(logging.ERROR)  # 减少图表生成日志
+        logging.getLogger('choreographer.browser_async').setLevel(logging.ERROR)
+        logging.getLogger('choreographer.utils').setLevel(logging.ERROR)
+        logging.getLogger('kaleido').setLevel(logging.ERROR)  # Plotly静态图表生成器
+        logging.getLogger('matplotlib').setLevel(logging.WARNING)  # matplotlib图表库
+        logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+        logging.getLogger('asyncio').setLevel(logging.WARNING)  # 异步IO库
+        logging.getLogger('root').setLevel(logging.WARNING)  # 浏览器相关
+        logging.getLogger('browser_proc').setLevel(logging.ERROR)  # 浏览器进程日志
+        logging.getLogger('services.technical_analysis').setLevel(logging.WARNING)  # 减少技术分析DEBUG日志
 
     except Exception as e:
         print(f"设置日志时发生错误: {e}")
         # 如果出错，提供一个基础的配置
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        # 设置根日志器为WARNING级别，避免第三方库的DEBUG/INFO日志
+        logging.getLogger().setLevel(logging.WARNING)
+        # 但保持我们自己的模块为INFO级别
+        logging.getLogger('__main__').setLevel(logging.INFO)
+        logging.getLogger('core').setLevel(logging.INFO)
+        logging.getLogger('services').setLevel(logging.INFO)
+        logging.getLogger('common').setLevel(logging.INFO)
+        logging.getLogger('exchange_client').setLevel(logging.INFO)
         # 即使出错也要禁用第三方库的详细日志
         logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
         logging.getLogger('urllib3').setLevel(logging.WARNING)
         logging.getLogger('ccxt').setLevel(logging.WARNING)
+        logging.getLogger('choreographer').setLevel(logging.ERROR)  # 减少图表生成日志
+        logging.getLogger('choreographer.browser_async').setLevel(logging.ERROR)
+        logging.getLogger('choreographer.utils').setLevel(logging.ERROR)
+        logging.getLogger('kaleido').setLevel(logging.ERROR)  # Plotly静态图表生成器
+        logging.getLogger('matplotlib').setLevel(logging.WARNING)  # matplotlib图表库
+        logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+        logging.getLogger('asyncio').setLevel(logging.WARNING)  # 异步IO库
+        logging.getLogger('root').setLevel(logging.WARNING)  # 浏览器相关
+        logging.getLogger('browser_proc').setLevel(logging.ERROR)  # 浏览器进程日志
+        logging.getLogger('services.technical_analysis').setLevel(logging.WARNING)  # 减少技术分析DEBUG日志
 
 def format_summary_report(stats: dict, time_range: str = "所有时间") -> str:
     """

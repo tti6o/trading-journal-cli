@@ -237,10 +237,10 @@ class SignalEngine:
                     all_signals.extend(non_neutral_signals)
                     all_signals_detail[symbol] = non_neutral_signals
             
-            # 生成技术分析图表 (如果有信号)
-            chart_paths = []
+            # 生成技术分析图表 - EBC风格外部URL (如果有信号)
+            chart_urls = []
             if all_signals:
-                chart_paths = self._generate_analysis_charts(symbols_data, signals_result)
+                chart_urls = self._generate_analysis_charts_for_email(symbols_data, signals_result)
                 
             # 发送通知 (如果找到信号且需要发送)
             notification_sent = False
@@ -257,7 +257,7 @@ class SignalEngine:
                             success = self.notification_service.send_signal_notification_with_charts(
                                 signals=all_signals,
                                 recipient=recipient,
-                                chart_paths=chart_paths,
+                                chart_urls=chart_urls,
                                 market_summary=market_summary
                             )
                             if success:
@@ -278,7 +278,7 @@ class SignalEngine:
                 'market_summary': market_summary,
                 'notification_sent': notification_sent,
                 'signals_detail': all_signals_detail,
-                'chart_paths': chart_paths
+                'chart_urls': chart_urls
             }
             
             logger.info(f"✅ 技术分析完成: 分析了 {result['analyzed_symbols']} 个交易对，"
@@ -704,6 +704,62 @@ class SignalEngine:
             logger.error(f"生成技术分析图表时发生错误: {e}")
         
         return chart_paths
+
+    def _generate_analysis_charts_for_email(self, symbols_data: Dict[str, pd.DataFrame],
+                                           signals_result: Dict[str, List]) -> List[str]:
+        """
+        为邮件生成EBC风格的外部图表链接
+
+        Args:
+            symbols_data: K线数据
+            signals_result: 分析信号结果
+
+        Returns:
+            图表外部URL列表
+        """
+        chart_urls = []
+
+        try:
+            from .chart_generator import ChartGenerator
+
+            # 创建图表生成器 - 使用Plotly
+            chart_generator = ChartGenerator(use_plotly=True)
+
+            # 准备分析结果数据
+            analysis_results = []
+            for symbol, signals in signals_result.items():
+                # 只为有非中性信号的交易对生成图表
+                non_neutral_signals = [s for s in signals if s.signal_type != 'NEUTRAL']
+                if non_neutral_signals and symbol in symbols_data:
+                    # 构造分析结果格式
+                    analysis_result = {
+                        'symbol': symbol,
+                        'rsi_signal': next((s for s in signals if s.indicator_type == 'RSI'), None),
+                        'high_confidence_fib': [s for s in signals if s.indicator_type == 'FIBONACCI' and s.confidence >= 0.5]
+                    }
+                    analysis_results.append(analysis_result)
+
+            # 批量生成图表URL - EBC风格
+            if analysis_results:
+                chart_urls = chart_generator.generate_batch_charts_for_email(
+                    analysis_results=analysis_results,
+                    klines_data=symbols_data,
+                    return_urls=True  # 关键：返回外部URL而不是本地路径
+                )
+
+                logger.info(f"✅ EBC风格图表生成完成: {len(chart_urls)} 个外部URL已生成")
+                for i, url in enumerate(chart_urls):
+                    logger.info(f"  📊 图表{i+1}: {url}")
+            else:
+                logger.info("没有符合条件的交易对需要生成图表")
+
+        except Exception as e:
+            logger.error(f"生成EBC风格邮件图表失败: {e}")
+            import traceback
+            logger.error("详细错误信息:")
+            logger.error(traceback.format_exc())
+
+        return chart_urls
 
 
 # 全局信号引擎实例

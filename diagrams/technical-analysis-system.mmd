@@ -1,165 +1,112 @@
-flowchart TB
-    subgraph "技术分析系统架构"
-        direction TB
+flowchart TD
+    %% 定义主要流程 - 更清晰的布局
+    START([开始技术分析]) --> INPUT[输入交易对]
+    INPUT --> DATA{获取市场数据}
 
-        subgraph "信号引擎核心 (services/signal_engine.py)"
-            SE[SignalEngine类]
-            SE1[run_analysis - 运行分析]
-            SE2[get_monitored_symbols - 获取监控交易对]
-            SE3[generate_signals - 生成信号]
+    %% 数据获取阶段
+    DATA -->|成功| OHLCV[OHLCV K线数据]
+    DATA -->|失败| ERROR([数据获取失败])
 
-            SE --> SE1
-            SE --> SE2
-            SE --> SE3
+    %% 技术分析核心流程
+    OHLCV --> ANALYSIS{技术分析引擎}
+
+    %% RSI分析分支
+    ANALYSIS --> RSI_BRANCH[RSI分析器]
+    RSI_BRANCH --> RSI_CALC[计算14期RSI]
+    RSI_CALC --> RSI_EVAL{RSI信号评估}
+    RSI_EVAL -->|RSI ≤ 30| RSI_BUY[超卖买入信号]
+    RSI_EVAL -->|RSI ≥ 70| RSI_SELL[超买卖出信号]
+    RSI_EVAL -->|30 < RSI < 70| RSI_NEUTRAL[中性信号]
+
+    %% 斐波那契分析分支
+    ANALYSIS --> FIB_BRANCH[斐波那契分析器]
+    FIB_BRANCH --> SWING_DETECT[识别关键高低点]
+    SWING_DETECT --> FIB_CALC{计算斐波那契水平}
+
+    %% 斐波那契回调分析
+    FIB_CALC --> FIB_RETRACEMENT[回调分析]
+    FIB_RETRACEMENT --> FIB_LEVELS[23.6% | 38.2% | 50% | 61.8% | 78.6%]
+    FIB_LEVELS --> FIB_PROXIMITY{价格接近度检查}
+    FIB_PROXIMITY -->|接近关键位| FIB_SIGNAL[🎯 斐波那契信号]
+    FIB_PROXIMITY -->|距离太远| FIB_NO_SIGNAL[无信号]
+
+    %% 斐波那契扩展分析
+    FIB_CALC --> FIB_EXTENSION[扩展分析]
+    FIB_EXTENSION --> FIB_EXT_LEVELS[127.2% | 161.8% | 261.8%]
+    FIB_EXT_LEVELS --> FIB_EXT_CHECK{扩展位检查}
+    FIB_EXT_CHECK -->|到达目标位| FIB_TARGET[🏆 目标位信号]
+    FIB_EXT_CHECK -->|未到达| FIB_EXT_NO_SIGNAL[无扩展信号]
+
+    %% 信号整合阶段
+    RSI_BUY --> SIGNAL_MERGE[信号整合引擎]
+    RSI_SELL --> SIGNAL_MERGE
+    RSI_NEUTRAL --> SIGNAL_MERGE
+    FIB_SIGNAL --> SIGNAL_MERGE
+    FIB_TARGET --> SIGNAL_MERGE
+    FIB_NO_SIGNAL --> SIGNAL_MERGE
+    FIB_EXT_NO_SIGNAL --> SIGNAL_MERGE
+
+    %% 置信度计算
+    SIGNAL_MERGE --> CONFIDENCE[计算信号置信度]
+    CONFIDENCE --> FINAL_SIGNAL{生成最终信号}
+
+    %% 最终输出
+    FINAL_SIGNAL -->|高置信度| HIGH_CONF[📈 强信号 - 发送通知]
+    FINAL_SIGNAL -->|中等置信度| MED_CONF[📊 中等信号 - 记录日志]
+    FINAL_SIGNAL -->|低置信度| LOW_CONF[📝 弱信号 - 仅记录]
+
+    %% 通知系统
+    HIGH_CONF --> NOTIFICATION[邮件通知系统]
+    NOTIFICATION --> EMAIL_SENT([📧 邮件已发送])
+
+    %% 日志记录
+    MED_CONF --> LOG[记录到分析日志]
+    LOW_CONF --> LOG
+    LOG --> COMPLETE[分析完成]
+
+    %% 错误处理
+    ERROR --> RETRY{重试?}
+    RETRY -->|是| DATA
+    RETRY -->|否| FAILED([分析失败])
+
+    %% 数据源说明
+    subgraph DataSources [数据源]
+        BINANCE[币安API]
+        KLINES[K线数据]
+        PRICES[实时价格]
+        BINANCE --> KLINES
+        BINANCE --> PRICES
+    end
+
+    %% 技术指标详解
+    subgraph TechnicalIndicators [技术指标详解]
+        subgraph RSI_DETAIL [RSI指标]
+            RSI_FORMULA[RSI = 100 - 100/(1+RS)]
+            RSI_RS[RS = 平均上涨幅度/平均下跌幅度]
+            RSI_PERIOD[默认14期计算]
         end
 
-        subgraph "技术分析模块 (services/technical_analysis.py)"
-            TA[TechnicalAnalysis类]
-            TA1[calculate_rsi - RSI指标]
-            TA2[calculate_macd - MACD指标]
-            TA3[calculate_fibonacci - 斐波那契分析]
-            TA4[calculate_bollinger_bands - 布林带]
-            TA5[get_kline_data - 获取K线数据]
-            TA6[analyze_symbol - 单币种分析]
-
-            TA --> TA1
-            TA --> TA2
-            TA --> TA3
-            TA --> TA4
-            TA --> TA5
-            TA --> TA6
-        end
-
-        subgraph "通知服务 (services/notification.py)"
-            NS[NotificationService类]
-            NS1[send_email - 发送邮件]
-            NS2[format_signals - 格式化信号]
-            NS3[prepare_email_content - 准备邮件内容]
-
-            NS --> NS1
-            NS --> NS2
-            NS --> NS3
-        end
-
-        subgraph "数据源 (exchange_client/binance_client.py)"
-            BC[BinanceClient类]
-            BC1[get_klines - 获取K线数据]
-            BC2[get_symbol_ticker - 获取价格]
-            BC3[get_account_info - 获取账户信息]
-
-            BC --> BC1
-            BC --> BC2
-            BC --> BC3
-        end
-
-        subgraph "技术指标算法详解"
-            subgraph "RSI相对强弱指标"
-                RSI1[14期RSI计算]
-                RSI2[超买信号 RSI > 70]
-                RSI3[超卖信号 RSI < 30]
-                RSI4[背离信号检测]
-            end
-
-            subgraph "MACD指标"
-                MACD1[快线EMA12 - 慢线EMA26]
-                MACD2[信号线EMA9]
-                MACD3[金叉买入信号]
-                MACD4[死叉卖出信号]
-                MACD5[柱状图变化]
-            end
-
-            subgraph "斐波那契分析"
-                FIB1[23.6% 回调位]
-                FIB2[38.2% 回调位]
-                FIB3[50.0% 回调位]
-                FIB4[61.8% 回调位]
-                FIB5[78.6% 回调位]
-                FIB6[扩展水平 127.2%, 161.8%]
-            end
-
-            subgraph "布林带指标"
-                BB1[中轨 - 20期SMA]
-                BB2[上轨 - 中轨 + 2倍标准差]
-                BB3[下轨 - 中轨 - 2倍标准差]
-                BB4[突破上轨 - 强势信号]
-                BB5[跌破下轨 - 弱势信号]
-            end
+        subgraph FIB_DETAIL [斐波那契分析]
+            FIB_RATIO[黄金比例: 0.618, 0.382]
+            FIB_SUPPORT[回调位作为支撑/阻力]
+            FIB_TARGET_CALC[扩展位作为目标价]
         end
     end
 
-    subgraph "信号生成流程"
-        direction LR
-
-        F1[获取历史K线数据] --> F2[计算技术指标]
-        F2 --> F3[评估指标状态]
-        F3 --> F4[生成交易信号]
-        F4 --> F5[计算信号强度]
-        F5 --> F6[格式化信号信息]
-        F6 --> F7[发送邮件通知]
+    %% 配置管理
+    subgraph ConfigManagement [配置管理]
+        CONFIG_FILE[config/config.ini]
+        RSI_CONFIG[RSI参数配置]
+        FIB_CONFIG[斐波那契参数配置]
+        EMAIL_CONFIG[邮件通知配置]
     end
 
-    subgraph "配置管理"
-        CONFIG[config/config.ini]
-        CONFIG1[邮件配置 - SMTP设置]
-        CONFIG2[币安API配置]
-        CONFIG3[技术分析参数]
-        CONFIG4[监控交易对列表]
+    %% 连接数据源
+    DATA -.-> BINANCE
+    OHLCV -.-> KLINES
 
-        CONFIG --> CONFIG1
-        CONFIG --> CONFIG2
-        CONFIG --> CONFIG3
-        CONFIG --> CONFIG4
-    end
+    %% 连接配置
+    RSI_BRANCH -.-> RSI_CONFIG
+    FIB_BRANCH -.-> FIB_CONFIG
+    NOTIFICATION -.-> EMAIL_CONFIG
 
-    %% 调用关系
-    SE1 --> TA6
-    SE3 --> NS2
-    TA6 --> TA1
-    TA6 --> TA2
-    TA6 --> TA3
-    TA6 --> TA4
-    TA5 --> BC1
-    NS1 --> CONFIG1
-    TA --> BC
-
-    %% 指标计算关系
-    TA1 --> RSI1
-    TA1 --> RSI2
-    TA1 --> RSI3
-    TA1 --> RSI4
-
-    TA2 --> MACD1
-    TA2 --> MACD2
-    TA2 --> MACD3
-    TA2 --> MACD4
-    TA2 --> MACD5
-
-    TA3 --> FIB1
-    TA3 --> FIB2
-    TA3 --> FIB3
-    TA3 --> FIB4
-    TA3 --> FIB5
-    TA3 --> FIB6
-
-    TA4 --> BB1
-    TA4 --> BB2
-    TA4 --> BB3
-    TA4 --> BB4
-    TA4 --> BB5
-
-    %% 样式定义
-    classDef engineCore fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
-    classDef analysisModule fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
-    classDef notificationModule fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    classDef dataSource fill:#fce4ec,stroke:#c2185b,stroke-width:2px
-    classDef indicators fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    classDef config fill:#e0f2f1,stroke:#00695c,stroke-width:2px
-    classDef process fill:#fffde7,stroke:#f9a825,stroke-width:2px
-
-    class SE,SE1,SE2,SE3 engineCore
-    class TA,TA1,TA2,TA3,TA4,TA5,TA6 analysisModule
-    class NS,NS1,NS2,NS3 notificationModule
-    class BC,BC1,BC2,BC3 dataSource
-    class RSI1,RSI2,RSI3,RSI4,MACD1,MACD2,MACD3,MACD4,MACD5,FIB1,FIB2,FIB3,FIB4,FIB5,FIB6,BB1,BB2,BB3,BB4,BB5 indicators
-    class CONFIG,CONFIG1,CONFIG2,CONFIG3,CONFIG4 config
-    class F1,F2,F3,F4,F5,F6,F7 process

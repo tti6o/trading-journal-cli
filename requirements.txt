@@ -33,11 +33,10 @@ tzdata==2025.2
 tzlocal==5.3.1
 urllib3==2.5.0
 yarl==1.20.1
-requests
-matplotlib
 pandas
 pandas-ta
 numpy
-tzlocal
 python-dotenv
 scipy
+yagmail
+mplfinance

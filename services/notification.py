@@ -9,6 +9,7 @@ import logging
 import smtplib
 import ssl
 import json
+import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -287,46 +288,90 @@ class EmailNotificationService:
         )
         
         return self.send_notification(message)
-    
-    def send_signal_notification_with_charts(self, signals: List[Any], recipient: str, 
-                                             chart_paths: List[str] = None, 
-                                             market_summary: Dict = None) -> bool:
+
+    def send_signal_notification_with_attachments(self, signals: List[Any], recipient: str,
+                                                chart_file_paths: List[str] = None,
+                                                market_summary: Dict = None) -> bool:
         """
-        发送包含图表的技术分析信号通知
-        
+        发送含图表附件的技术分析信号通知 - 简化版本
+
         Args:
             signals: 技术信号列表
             recipient: 收件人邮箱
-            chart_paths: 图表文件路径列表
+            chart_file_paths: 图表文件路径列表（作为附件）
             market_summary: 市场摘要数据
-            
+
         Returns:
             是否成功发送
         """
         if not signals:
             logger.warning("发送信号通知失败: 没有信号数据")
             return False
-        
+
         logger.info(f"准备发送技术分析信号邮件到: {recipient}")
-        logger.info(f"信号数量: {len(signals)}, 图表数量: {len(chart_paths) if chart_paths else 0}")
-        
+        logger.info(f"信号数量: {len(signals)}, 附件数量: {len(chart_file_paths) if chart_file_paths else 0}")
+
         # 生成邮件内容
         subject = f"技术分析信号提醒 (RSI+斐波那契) - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        content = self._generate_enhanced_signal_email_content(signals, market_summary)
-        
+        content = self._generate_signal_email_content(signals)
+
+        # 准备附件列表
+        attachments = chart_file_paths if chart_file_paths else []
+
         message = NotificationMessage(
             recipient=recipient,
             subject=subject,
             content=content,
             message_type='html',
-            attachments=chart_paths or [],
+            attachments=attachments,  # 使用附件方式
             priority=1
         )
-        
-        logger.info(f"邮件消息已创建，主题: {subject}")
+
+        logger.info(f"附件邮件消息已创建，主题: {subject}")
         result = self.send_notification(message)
         logger.info(f"邮件发送结果: {result}")
-        
+
+        return result
+
+    def send_signal_notification_with_charts(self, signals: List[Any], recipient: str,
+                                             chart_urls: List[str] = None,
+                                             market_summary: Dict = None) -> bool:
+        """
+        发送含外部图表链接的技术分析信号通知 - EBC风格
+
+        Args:
+            signals: 技术信号列表
+            recipient: 收件人邮箱
+            chart_urls: 图表外部URL列表 (参考EBC方案)
+            market_summary: 市场摘要数据
+
+        Returns:
+            是否成功发送
+        """
+        if not signals:
+            logger.warning("发送信号通知失败: 没有信号数据")
+            return False
+
+        logger.info(f"准备发送技术分析信号邮件到: {recipient}")
+        logger.info(f"信号数量: {len(signals)}, 图表数量: {len(chart_urls) if chart_urls else 0}")
+
+        # 生成带外部图表链接的邮件内容 - EBC风格
+        subject = f"技术分析信号提醒 (RSI+斐波那契) - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        content = self._generate_email_with_embedded_charts(signals, chart_urls, market_summary)
+
+        message = NotificationMessage(
+            recipient=recipient,
+            subject=subject,
+            content=content,
+            message_type='html',
+            attachments=[],  # 不使用附件，图片已内嵌
+            priority=1
+        )
+
+        logger.info(f"内嵌图表邮件消息已创建，主题: {subject}")
+        result = self.send_notification(message)
+        logger.info(f"邮件发送结果: {result}")
+
         return result
     
     def _generate_signal_email_content(self, signals: List[Any]) -> str:
@@ -695,29 +740,46 @@ class EmailNotificationService:
             return f"{signal.indicator_type}: {signal.confidence:.1%}"
     
     def _format_enhanced_signal_indicator(self, signal) -> str:
-        """格式化增强版信号指标信息"""
+        """格式化增强版信号指标信息 - 参考EBC专业格式"""
         if signal.indicator_type == 'RSI' and signal.rsi_value is not None:
+            # 生成具体的交易策略
+            rsi_level = self._get_rsi_level_description(signal.rsi_value)
+            trading_strategy = self._generate_rsi_trading_strategy(signal)
+
             return f'''
-                <span>RSI(14) 指标值:</span>
-                <span class="indicator-value">{signal.rsi_value:.1f}</span>
-                <span style="font-size: 12px; color: #666;">
-                    ({self._get_rsi_level_description(signal.rsi_value)})
-                </span>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                    <div style="font-weight: bold; margin-bottom: 10px;">🔶 RSI(14) 技术分析</div>
+                    <div><strong>当前RSI值:</strong> {signal.rsi_value:.1f} ({rsi_level})</div>
+                    <div><strong>转折点:</strong> {signal.price:.4f}</div>
+                    <div style="margin: 10px 0;">
+                        <strong>交易策略:</strong><br>
+                        {trading_strategy}
+                    </div>
+                    <div><strong>技术意见:</strong> RSI技术指标{self._get_rsi_trend_opinion(signal.rsi_value)}</div>
+                </div>
             '''
         elif signal.indicator_type == 'FIBONACCI':
             fib_pct = signal.fib_level * 100 if signal.fib_level else 0
             trend_emoji = '📈' if signal.trend_direction == 'UP' else '📉'
+            fib_strategy = self._generate_fibonacci_trading_strategy(signal)
+
             return f'''
-                <span>斐波那契 {signal.fib_type}:</span>
-                <span class="indicator-value">{fib_pct:.1f}%</span>
-                <span style="font-size: 12px; color: #666;">
-                    {trend_emoji} {signal.trend_direction} 趋势
-                </span>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                    <div style="font-weight: bold; margin-bottom: 10px;">📐 斐波那契 {signal.fib_type} 分析</div>
+                    <div><strong>关键水平:</strong> {fib_pct:.1f}% @ {signal.price:.4f}</div>
+                    <div><strong>趋势方向:</strong> {trend_emoji} {signal.trend_direction}</div>
+                    <div style="margin: 10px 0;">
+                        <strong>交易策略:</strong><br>
+                        {fib_strategy}
+                    </div>
+                    <div><strong>技术意见:</strong> 价格已{self._get_fib_position_desc(signal)}斐波那契{fib_pct:.1f}%水平，{self._get_fib_expectation(signal)}</div>
+                </div>
             '''
         else:
             return f'''
-                <span>{signal.indicator_type} 指标:</span>
-                <span class="indicator-value">置信度 {signal.confidence:.1%}</span>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                    <div><strong>{signal.indicator_type} 指标:</strong> 置信度 {signal.confidence:.1%}</div>
+                </div>
             '''
     
     def _get_rsi_level_description(self, rsi_value: float) -> str:
@@ -732,6 +794,83 @@ class EmailNotificationService:
             return "偏强"
         else:
             return "中性区域"
+
+    def _generate_rsi_trading_strategy(self, signal) -> str:
+        """生成RSI交易策略 - 参考EBC格式"""
+        price = signal.price
+        rsi = signal.rsi_value
+
+        if rsi <= 30:  # 超卖
+            target1 = price * 1.02  # 2%目标
+            target2 = price * 1.05  # 5%目标
+            stop_loss = price * 0.98  # 2%止损
+            return f"在当前价位 {price:.4f} 附近，考虑逢低买入，目标价为 {target1:.4f}，第二目标价为 {target2:.4f}。止损位设在 {stop_loss:.4f}。"
+
+        elif rsi >= 70:  # 超买
+            target1 = price * 0.98  # 2%目标
+            target2 = price * 0.95  # 5%目标
+            stop_loss = price * 1.02  # 2%止损
+            return f"在当前价位 {price:.4f} 附近，考虑逢高卖出，目标价为 {target1:.4f}，第二目标价为 {target2:.4f}。止损位设在 {stop_loss:.4f}。"
+
+        elif signal.signal_type == 'SELL':
+            target1 = price * 0.98
+            target2 = price * 0.95
+            stop_loss = price * 1.02
+            return f"在 {price:.4f} 之下，看空，目标价为 {target1:.4f}，第二目标价为 {target2:.4f}。备选策略：在 {price:.4f} 之上反弹时考虑止损。"
+
+        else:  # 中性或买入
+            target1 = price * 1.02
+            target2 = price * 1.05
+            stop_loss = price * 0.98
+            return f"在 {price:.4f} 之上，看多，目标价为 {target1:.4f}，第二目标价为 {target2:.4f}。备选策略：在 {price:.4f} 之下考虑止损。"
+
+    def _get_rsi_trend_opinion(self, rsi_value: float) -> str:
+        """获取RSI趋势意见"""
+        if rsi_value <= 30:
+            return "处于超卖区域，有反弹空间，但需谨慎确认底部"
+        elif rsi_value >= 70:
+            return "处于超买区域，存在回调风险，建议谨慎追高"
+        elif rsi_value > 50:
+            return "在50%中性区域之上，显示多头优势，但需关注是否持续"
+        else:
+            return "在50%中性区域之下，显示空头压力，需要观察是否企稳"
+
+    def _generate_fibonacci_trading_strategy(self, signal) -> str:
+        """生成斐波那契交易策略"""
+        price = signal.price
+        fib_level = signal.fib_level * 100
+
+        if signal.signal_type == 'SELL':
+            target1 = price * 0.98
+            target2 = price * 0.96
+            stop_loss = price * 1.015
+            return f"价格触及{fib_level:.1f}%斐波那契水平 {price:.4f}，考虑在此位置附近做空，目标价为 {target1:.4f}，第二目标价为 {target2:.4f}。止损位设在 {stop_loss:.4f}。"
+        else:
+            target1 = price * 1.02
+            target2 = price * 1.04
+            stop_loss = price * 0.985
+            return f"价格在{fib_level:.1f}%斐波那契水平 {price:.4f} 获得支撑，考虑在此位置附近做多，目标价为 {target1:.4f}，第二目标价为 {target2:.4f}。止损位设在 {stop_loss:.4f}。"
+
+    def _get_fib_position_desc(self, signal) -> str:
+        """获取斐波那契位置描述"""
+        if signal.signal_type == 'SELL':
+            return "触及"
+        else:
+            return "接近"
+
+    def _get_fib_expectation(self, signal) -> str:
+        """获取斐波那契预期"""
+        fib_level = signal.fib_level * 100
+        if signal.signal_type == 'SELL':
+            if fib_level >= 61.8:
+                return "预期可能出现回调压力"
+            else:
+                return "存在进一步上涨受阻的可能"
+        else:
+            if fib_level <= 38.2:
+                return "预期可能获得反弹支撑"
+            else:
+                return "存在进一步下跌受限的可能"
     
     def test_email_config(self) -> Dict[str, Any]:
         """
@@ -905,10 +1044,140 @@ class EmailNotificationService:
             
             logger.info("邮件通知服务已停止")
     
+    def _generate_email_with_embedded_charts(self, signals: List[Any],
+                                           chart_urls: List[str] = None,
+                                           market_summary: Dict = None) -> str:
+        """
+        生成带外部图表链接的HTML邮件内容 - EBC风格
+
+        Args:
+            signals: 信号列表
+            chart_urls: 图表外部URL列表 (参考EBC方案)
+            market_summary: 市场摘要数据
+
+        Returns:
+            包含外部图表链接的HTML邮件内容
+        """
+        # 首先生成基础的邮件内容
+        base_html = self._generate_enhanced_signal_email_content(signals, market_summary)
+
+        # 如果没有图表，直接返回基础HTML
+        if not chart_urls:
+            return base_html
+
+        # 生成外部图表链接的HTML - EBC风格
+        charts_html = self._generate_embedded_charts_html(chart_urls)
+
+        # 在邮件HTML中插入图表部分
+        # 找到合适的位置插入图表（在disclaimer之前）
+        disclaimer_pos = base_html.find('<div class="disclaimer">')
+        if disclaimer_pos != -1:
+            # 在disclaimer之前插入图表
+            enhanced_html = (base_html[:disclaimer_pos] +
+                           charts_html + '\n                ' +
+                           base_html[disclaimer_pos:])
+        else:
+            # 如果没找到disclaimer，在footer之前插入
+            footer_pos = base_html.find('<div class="footer">')
+            if footer_pos != -1:
+                enhanced_html = (base_html[:footer_pos] +
+                               charts_html + '\n                ' +
+                               base_html[footer_pos:])
+            else:
+                # 如果都没找到，直接在结尾前添加
+                enhanced_html = base_html.replace('</body>', charts_html + '\n        </body>')
+
+        return enhanced_html
+
+    def _generate_embedded_charts_html(self, chart_urls: List[str]) -> str:
+        """
+        生成外部链接图表的HTML代码 - EBC方案
+        🚀 使用外部URL而非base64内嵌，大幅减少邮件大小
+
+        Args:
+            chart_urls: 图表Web URL列表
+
+        Returns:
+            图表HTML代码
+        """
+        if not chart_urls:
+            return ""
+
+        charts_html = '''
+                <div class="charts-section" style="margin: 20px; padding: 20px; background-color: #f8f9fa; border-radius: 8px;">
+                    <h2 style="color: #333; text-align: center; margin-bottom: 20px;">📊 技术分析图表</h2>
+                    <p style="text-align: center; color: #666; margin-bottom: 30px;">
+                        以下图表显示了相关交易对的K线走势、RSI指标和斐波那契水平线分析
+                    </p>
+        '''
+
+        for i, chart_url in enumerate(chart_urls):
+            try:
+                # 从URL中提取币种名称
+                import re
+                symbol_match = re.search(r'([A-Z]+USDT)', chart_url)
+                symbol = symbol_match.group(1) if symbol_match else f'Chart_{i+1}'
+
+                charts_html += f'''
+                    <div style="margin: 30px 0; text-align: center;">
+                        <h3 style="color: #007bff; margin-bottom: 15px;">🎯 {symbol} 技术分析图表</h3>
+                        <div style="border: 2px solid #e0e0e0; border-radius: 8px; padding: 10px; background-color: white; display: inline-block; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <img src="{chart_url}"
+                                 alt="{symbol} 技术分析图表"
+                                 style="max-width: 100%; height: auto; border-radius: 4px; max-width: 800px;"
+                                 loading="lazy" />
+                        </div>
+                        <p style="font-size: 12px; color: #888; margin-top: 10px; font-style: italic;">
+                            包含K线图、RSI指标和斐波那契水平线分析
+                        </p>
+                    </div>
+                    '''
+
+            except Exception as e:
+                logger.error(f"处理图表URL失败 {chart_url}: {e}")
+                continue
+
+        charts_html += '''
+                    <div style="text-align: center; margin-top: 20px; padding: 15px; background-color: #e7f3ff; border-radius: 5px;">
+                        <p style="margin: 0; color: #0066cc; font-size: 14px;">
+                            💡 <strong>图表说明：</strong> 绿色蜡烛表示上涨，红色蜡烛表示下跌。RSI指标显示超买超卖情况，蓝色虚线为斐波那契关键水平。
+                        </p>
+                    </div>
+                </div>
+        '''
+
+        return charts_html
+
+    def _convert_image_to_base64(self, image_path: str) -> str:
+        """
+        将图片文件转换为base64编码
+
+        Args:
+            image_path: 图片文件路径
+
+        Returns:
+            base64编码的图片数据，失败返回空字符串
+        """
+        try:
+            import os
+            if not os.path.exists(image_path):
+                logger.warning(f"图片文件不存在: {image_path}")
+                return ""
+
+            with open(image_path, 'rb') as image_file:
+                image_data = image_file.read()
+                base64_data = base64.b64encode(image_data).decode('utf-8')
+                logger.debug(f"图片 {image_path} 转换为base64成功，大小: {len(base64_data)} 字符")
+                return base64_data
+
+        except Exception as e:
+            logger.error(f"转换图片为base64失败 {image_path}: {e}")
+            return ""
+
     def get_status(self) -> Dict[str, Any]:
         """
         获取通知服务状态
-        
+
         Returns:
             状态字典
         """

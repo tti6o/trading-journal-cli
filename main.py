@@ -14,58 +14,46 @@ from datetime import datetime
 import os
 import time
 from rich.console import Console
-from services.signal_engine import get_signal_engine
 import configparser
+import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 这是一个使用 @click.group() 创建的主命令组
 # 后续的命令 (init, import, report) 都会注册到这个组里
 @click.group()
 def cli():
     """
-    交易日志 CLI 工具 - 分析币安交易记录的盈亏情况
-    
-    🚀 核心功能:
-    - 数据同步和完整报告: python main.py sync
+    交易日志 CLI 工具 - 第六版技术分析MVP
+
+    🚀 核心命令 (日常使用):
+    - 数据同步和统计: python main.py sync
+    - 技术分析和决策: python main.py analyze
+
+    ⚙️ 基础功能:
     - 初始化数据库: python main.py init
     - 导入交易记录: python main.py import 交易文件.xlsx
-
-    ⚙️ API 管理:
-    - 测试 API 连接: python main.py api test
-    - 查看活跃交易对: python main.py api symbols
-    - 同步特定交易对: python main.py api sync-symbol BTCUSDT
     - 配置 API 密钥: python main.py api config
-    
-    ⏰ 定时同步功能:
-    - 启动定时同步: python main.py scheduler start
-    - 查看调度器状态: python main.py scheduler status
-    - 立即触发同步: python main.py scheduler sync-now
-    - 查看调度器配置: python main.py scheduler config
-    
-    🔍 技术分析功能 (新增):
-    - 执行技术分析: python main.py technical run
-    - 查看分析状态: python main.py technical status
-    - 测试分析组件: python main.py technical test
-    - 添加监控交易对: python main.py technical add-symbol BTCUSDT
-    - 移除监控交易对: python main.py technical remove-symbol BTCUSDT
-    
-    📧 通知功能 (新增):
-    - 测试邮件配置: python main.py notification test
-    - 发送测试邮件: python main.py notification test --send
-    - 指定收件人测试: python main.py notification test --send --recipient email@example.com
-    - 查看通知状态: python main.py notification status
-    
-    📖 使用步骤:
-    1. 首次使用: python main.py init (初始化数据库，如已存在会提示确认)
-    2. 配置 API: python main.py api config (设置币安 API 密钥)
-    3. 测试连接: python main.py api test (验证 API 连接)
-    4. 启动定时同步: python main.py scheduler start (后台自动同步)
-    5. 查看报告: python main.py report summary (生成分析报告)
-    
-    💡 定时同步说明:
-    - 默认每4小时自动同步一次交易数据
-    - 支持智能增量同步，只获取新的交易记录
-    - 可在 config.ini 中配置同步间隔和初始同步天数
-    - 调度器在后台运行，不影响其他操作
+    - 测试 API 连接: python main.py api test
+
+    📖 快速上手:
+    1. 初始化: python main.py init
+    2. 配置API: python main.py api config
+    3. 同步数据: python main.py sync
+    4. 技术分析: python main.py analyze
+
+    💡 技术分析说明:
+    - analyze 命令基于 config.ini 中的 monitored_symbols 配置
+    - 自动显示系统状态、批量分析所有监控币种(RSI + 斐波那契)
+    - 提供买入/卖出信号和市场情绪分析，自动邮件通知
+    - 专注于"现在应该买还是卖？"的实用决策
+
+    🔧 高级功能 (使用 --help-all 查看):
+    - scheduler: 定时同步功能
+    - notification: 邮件通知管理
+    - report: 详细报告生成
+    - api: API管理功能
     """
     utilities.setup_logging()
 
@@ -284,167 +272,6 @@ def setup_config():
     except Exception as e:
         click.echo(f"❌ 创建配置文件失败: {e}")
 
-@cli.group()
-def technical():
-    """
-    技术分析和信号通知功能
-    """
-    pass
-
-@technical.command('run')
-@click.option('--symbols', default=None, help='指定要分析的交易对，多个交易对用逗号分隔')
-@click.option('--interval', default='1h', help='K线间隔，默认为1小时')
-@click.option('--limit', default=150, type=int, help='K线数量限制，默认为150')
-@click.pass_context
-def run_technical_analysis(ctx, symbols, interval, limit):
-    """执行一次技术分析并输出结果（不发送通知）"""
-    console = Console()
-    try:
-        # 获取信号引擎实例
-        signal_engine = get_signal_engine()
-        
-        # 准备执行分析的配置覆盖
-        config_override = {
-            'symbols': symbols,
-            'kline_interval': interval,
-            'kline_limit': limit
-        }
-        
-        with console.status("[bold cyan]正在执行技术分析...[/]", spinner="dots"):
-            # 执行技术分析，但不发送通知
-            result = signal_engine.run_analysis(send_notification=False)
-
-        if not result['success']:
-            click.secho(f"技术分析失败: {result.get('error', '未知错误')}", fg='red')
-        else:
-            click.secho("✅ 技术分析完成", bold=True, fg='green')
-
-    except Exception as e:
-        click.secho(f"执行技术分析时出错: {e}", fg='red')
-
-@technical.command('notify')
-@click.pass_context
-def run_and_notify(ctx):
-    """执行技术分析并将结果通过邮件发送"""
-    console = Console()
-    try:
-        signal_engine = get_signal_engine()
-
-        with console.status("[bold cyan]正在执行技术分析并准备发送通知...[/]", spinner="dots"):
-            result = signal_engine.run_analysis(send_notification=True)
-
-        if not result.get('success'):
-            click.secho(f"技术分析失败: {result.get('error', '未知错误')}", fg='red')
-            return
-
-        click.secho("✅ 分析完成!", bold=True, fg='green')
-        
-        signals_found = result.get('signals_found', 0)
-        notification_sent = result.get('notification_sent', False)
-
-        if signals_found > 0:
-            if notification_sent:
-                click.secho(f"📈 发现 {signals_found} 个信号，已成功发送邮件通知。", fg='green')
-            else:
-                click.secho(f"📈 发现 {signals_found} 个信号，但邮件通知发送失败或已禁用。", fg='yellow')
-        else:
-            click.secho("📉 本次分析未发现符合条件的交易信号，无需发送通知。", fg='cyan')
-
-    except Exception as e:
-        click.secho(f"执行技术分析和通知时出错: {e}", fg='red')
-
-@technical.command('status')
-@click.option('--verbose', '-v', is_flag=True, help='显示详细信息')
-def tech_status(verbose):
-    """
-    查看技术分析状态
-    """
-    try:
-        from services.signal_engine import get_signal_engine
-        
-        signal_engine = get_signal_engine()
-        status = signal_engine.get_status()
-        
-        click.echo("📊 技术分析状态:")
-        click.echo("=" * 40)
-        click.echo(f"启用状态: {'✅ 已启用' if status['enabled'] else '❌ 未启用'}")
-        click.echo(f"监控交易对: {status['monitored_symbols_count']} 个")
-        click.echo(f"通知收件人: {status['notification_recipients_count']} 个")
-        click.echo(f"组件状态:")
-        click.echo(f"  - 市场分析器: {'✅' if status['market_analyzer_ready'] else '❌'}")
-        click.echo(f"  - 通知服务: {'✅' if status['notification_service_ready'] else '❌'}")
-        click.echo(f"  - 交易所客户端: {'✅' if status['exchange_client_ready'] else '❌'}")
-        
-        if verbose and status['monitored_symbols']:
-            click.echo(f"\n监控的交易对: {', '.join(status['monitored_symbols'])}")
-            
-    except Exception as e:
-        click.echo(f"❌ 获取技术分析状态失败: {e}")
-
-@technical.command('test')
-def test_components():
-    """
-    测试技术分析组件
-    """
-    try:
-        from services.signal_engine import get_signal_engine
-        
-        click.echo("🧪 测试技术分析组件...")
-        signal_engine = get_signal_engine()
-        test_results = signal_engine.test_components()
-        
-        for component, result in test_results.items():
-            status_icon = '✅' if result['success'] else '❌'
-            click.echo(f"{component}: {status_icon}")
-            if not result['success']:
-                click.echo(f"   错误: {result.get('error', '未知错误')}")
-                
-    except Exception as e:
-        click.echo(f"❌ 测试组件时发生错误: {e}")
-
-@technical.command('add-symbol')
-@click.argument('symbol')
-def add_monitored_symbol(symbol):
-    """
-    添加监控的交易对
-    
-    SYMBOL: 交易对符号 (如 BTCUSDT)
-    """
-    try:
-        from services.signal_engine import get_signal_engine
-        
-        symbol = symbol.upper()
-        signal_engine = get_signal_engine()
-        
-        if signal_engine.add_monitored_symbol(symbol):
-            click.echo(f"✅ 已添加监控交易对: {symbol}")
-        else:
-            click.echo(f"⚠️ 交易对 {symbol} 已在监控列表中")
-            
-    except Exception as e:
-        click.echo(f"❌ 添加监控交易对失败: {e}")
-
-@technical.command('remove-symbol')
-@click.argument('symbol')
-def remove_monitored_symbol(symbol):
-    """
-    移除监控的交易对
-    
-    SYMBOL: 交易对符号 (如 BTCUSDT)
-    """
-    try:
-        from services.signal_engine import get_signal_engine
-        
-        symbol = symbol.upper()
-        signal_engine = get_signal_engine()
-        
-        if signal_engine.remove_monitored_symbol(symbol):
-            click.echo(f"✅ 已移除监控交易对: {symbol}")
-        else:
-            click.echo(f"⚠️ 交易对 {symbol} 不在监控列表中")
-            
-    except Exception as e:
-        click.echo(f"❌ 移除监控交易对失败: {e}")
 
 @cli.group()
 def notification():
@@ -611,8 +438,6 @@ def scheduler_config():
     查看和修改调度器配置
     """
     try:
-        import configparser
-        
         config = configparser.ConfigParser()
         config.read('config/config.ini', encoding='utf-8')
         
@@ -655,7 +480,7 @@ def sync(days):
     try:
         # 步骤1: 智能计算同步天数
         from core import database as database_setup
-        from datetime import datetime, timedelta
+        from datetime import timedelta
 
         if days is None:
             # 智能同步: 从上次同步时间开始
@@ -842,11 +667,354 @@ def sync(days):
         console.print(f"\n❌ 同步过程中发生错误: {e}")
         console.print("💡 请检查网络连接和配置")
 
-def get_manager() -> journal_core.TradingJournalManager:
-    """获取交易日志管理器实例"""
-    config = configparser.ConfigParser()
-    config.read('config/config.ini', encoding='utf-8')
-    return journal_core.TradeJournalManager(config)
+
+# ============================================================================
+# 🔬 analyze命令 - 第六版技术分析MVP（批量监控币种智能分析）
+# ============================================================================
+
+@cli.command()
+def analyze():
+    """
+    📈 技术分析超级命令 - 一键完成所有分析
+
+    自动执行以下功能：
+    1. 显示技术分析系统状态
+    2. 批量分析所有监控币种(RSI + 斐波那契)
+    3. 生成市场概览和投资建议
+    4. 自动发送邮件通知(如有信号)
+
+    基于 config.ini 中的 monitored_symbols 配置
+    """
+    console = Console()
+
+    try:
+        console.print("🚀 [bold cyan]技术分析 - 批量币种分析[/]")
+
+        # 1. 检查系统状态并获取监控币种
+        try:
+            from services.signal_engine import get_signal_engine
+            signal_engine = get_signal_engine()
+            status_info = signal_engine.get_status()
+
+            # 简洁的状态显示
+            status_indicators = []
+            status_indicators.append('✅' if status_info['enabled'] else '❌')
+            status_indicators.append(f"{status_info['monitored_symbols_count']}币种")
+            status_indicators.append('📧' if status_info['notification_recipients_count'] > 0 else '📪')
+            status_indicators.append('🔗' if status_info['exchange_client_ready'] else '❌')
+
+            console.print(f"📊 系统状态: {' | '.join(status_indicators)}")
+
+        except Exception as e:
+            console.print(f"⚠️ 系统检查失败: {e}")
+
+        # 2. 读取监控币种和分析配置
+        config = configparser.ConfigParser()
+        config.read('config/config.ini', encoding='utf-8')
+
+        monitored_symbols = []
+        if config.has_section('technical_analysis'):
+            symbols_str = config.get('technical_analysis', 'monitored_symbols', fallback='')
+            if symbols_str:
+                monitored_symbols = [s.strip().upper() for s in symbols_str.split(',') if s.strip()]
+
+        if not monitored_symbols:
+            console.print("⚠️  配置文件中未找到监控币种列表")
+            console.print("💡 请在 config.ini 中配置 monitored_symbols")
+            return
+
+        # 3. 读取分析参数配置
+        interval = config.get('technical_analysis', 'kline_interval', fallback='1h')
+        kline_limit = config.getint('technical_analysis', 'kline_limit', fallback=200)
+
+        console.print(f"📊 [bold cyan]分析配置[/]: {interval} K线图，{kline_limit} 根K线数据")
+
+        # 4. 检查API配置
+        if not os.path.exists('config/config.ini'):
+            console.print("❌ 未找到API配置文件")
+            console.print("💡 请使用 'python main.py api config' 配置API")
+            return
+
+        # 5. 批量分析 - 静默处理
+        console.print(f"🔍 正在分析 {len(monitored_symbols)} 个币种...")
+
+        analysis_results = []
+        klines_data = {}
+        successful_analyses = 0
+
+        from exchange_client.factory import ExchangeClientFactory
+        client = ExchangeClientFactory.create_from_config('config/config.ini')
+
+        for symbol in monitored_symbols:
+            try:
+                # 获取K线数据
+                klines = client.fetch_klines(symbol, interval, kline_limit)
+                if not klines or len(klines) < 30:
+                    continue
+
+                # 转换为DataFrame
+                df = pd.DataFrame(klines)
+                df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df.set_index('timestamp', inplace=True)
+                for col in ['open', 'high', 'low', 'close', 'volume']:
+                    df[col] = pd.to_numeric(df[col])
+
+                # 保存K线数据用于图表生成
+                klines_data[symbol] = df.copy()
+
+                # 执行技术分析
+                current_price = float(df['close'].iloc[-1])
+                price_change = ((current_price - float(df['close'].iloc[-2])) / float(df['close'].iloc[-2])) * 100
+
+                # RSI分析
+                from services.technical_analysis import RsiAnalyzer, FibonacciAnalyzer
+                rsi_analyzer = RsiAnalyzer()
+                rsi_signal = rsi_analyzer.analyze(symbol, df)
+
+                # 斐波那契分析
+                fib_analyzer = FibonacciAnalyzer()
+                fib_signals = fib_analyzer.analyze(symbol, df)
+
+                # 汇总结果
+                signals = []
+                high_confidence_fib = []
+
+                if rsi_signal and rsi_signal.signal_type != 'NEUTRAL':
+                    signals.append(f"RSI:{rsi_signal.signal_type}")
+
+                if fib_signals:
+                    high_confidence_fib = [s for s in fib_signals if s.confidence >= 0.6 and s.signal_type != 'NEUTRAL']
+                    for fib_signal in high_confidence_fib:
+                        signals.append(f"FIB:{fib_signal.signal_type}")
+
+                # 综合信号评分
+                buy_count = sum(1 for s in signals if 'BUY' in s)
+                sell_count = sum(1 for s in signals if 'SELL' in s)
+
+                if buy_count > sell_count:
+                    overall_signal = "BUY"
+                elif sell_count > buy_count:
+                    overall_signal = "SELL"
+                else:
+                    overall_signal = "NEUTRAL"
+
+                # 保存详细结果
+                analysis_results.append({
+                    'symbol': symbol,
+                    'price': current_price,
+                    'change': price_change,
+                    'signal': overall_signal,
+                    'signals_detail': signals,
+                    'signal_count': len(signals),
+                    'rsi_signal': rsi_signal,
+                    'fib_signals': fib_signals,
+                    'high_confidence_fib': high_confidence_fib if fib_signals else []
+                })
+
+                successful_analyses += 1
+
+                # 添加友好的分析输出
+                _display_analysis_summary(console, symbol, current_price, price_change,
+                                        overall_signal, rsi_signal, fib_signals, signals)
+
+            except Exception as e:
+                continue  # 静默跳过失败的币种
+
+        # 5. 生成市场概览 - 关键结果
+        if analysis_results:
+            console.print(f"✅ 分析完成 {successful_analyses}/{len(monitored_symbols)} 个币种\n")
+
+            # 统计信号分布
+            buy_symbols = [r for r in analysis_results if r['signal'] == 'BUY']
+            sell_symbols = [r for r in analysis_results if r['signal'] == 'SELL']
+            neutral_symbols = [r for r in analysis_results if r['signal'] == 'NEUTRAL']
+
+            console.print("📊 [bold cyan]市场概览[/]")
+            console.print(f"🟢 买入信号: {len(buy_symbols)} | 🔴 卖出信号: {len(sell_symbols)} | 🟡 中性: {len(neutral_symbols)}")
+
+            # 显示有明确信号的币种
+            actionable_symbols = buy_symbols + sell_symbols
+            if actionable_symbols:
+                console.print(f"\n📈 [bold yellow]重点关注币种[/]")
+                # 按信号强度排序
+                actionable_symbols.sort(key=lambda x: x['signal_count'], reverse=True)
+
+                for r in actionable_symbols[:5]:  # 显示前5个
+                    signal_color = "green" if r['signal'] == 'BUY' else "red"
+                    change_color = "green" if r['change'] >= 0 else "red"
+                    change_symbol = "+" if r['change'] >= 0 else ""
+                    console.print(f"  💎 {r['symbol']:8} - [{signal_color}]{r['signal']:4}[/] - {r['price']:>8.4f} ([{change_color}]{change_symbol}{r['change']:>5.1f}%[/]) - {len(r['signals_detail'])}个信号")
+
+            # 市场情绪
+            if len(buy_symbols) > len(sell_symbols) * 1.5:
+                market_sentiment = "偏多"
+                sentiment_color = "green"
+            elif len(sell_symbols) > len(buy_symbols) * 1.5:
+                market_sentiment = "偏空"
+                sentiment_color = "red"
+            else:
+                market_sentiment = "中性"
+                sentiment_color = "white"
+
+            console.print(f"\n💭 市场情绪: [{sentiment_color}]{market_sentiment}[/]")
+
+        # 6. 自动发送邮件通知（如有信号）- 简化过程
+        if analysis_results:
+            actionable_results = [r for r in analysis_results if r['signal'] != 'NEUTRAL']
+
+            if actionable_results:
+                # 构造信号数据
+                from services.technical_analysis import TechnicalSignal
+
+                signals_for_notification = []
+                for result in actionable_results:
+                    signal = TechnicalSignal(
+                        symbol=result['symbol'],
+                        timestamp=datetime.now(),
+                        signal_type=result['signal'],
+                        price=result['price'],
+                        message=f"{result['symbol']} {result['signal']} 信号 (价格: {result['price']:.4f}, 变化: {result['change']:+.1f}%)"
+                    )
+                    signals_for_notification.append(signal)
+
+                # 使用专业邮件服务发送通知
+                try:
+                    from services.simple_email import get_simple_email_service
+                    from services.chart_professional import get_professional_chart_generator
+
+                    email_service = get_simple_email_service()
+
+                    if email_service.enabled and email_service.recipients:
+                        # 生成专业图表文件（TradingView风格）
+                        chart_paths = []
+                        try:
+                            chart_generator = get_professional_chart_generator()
+                            actionable_analysis_results = [r for r in analysis_results if r['signal'] != 'NEUTRAL']
+
+                            if actionable_analysis_results:
+                                chart_paths = chart_generator.generate_batch_charts(
+                                    analysis_results=actionable_analysis_results,
+                                    klines_data=klines_data
+                                )
+                                console.print(f"📊 生成 {len(chart_paths)} 个专业图表文件 (TradingView风格)")
+                        except Exception as e:
+                            console.print(f"⚠️ 专业图表生成失败: {e}")
+
+                        # 发送邮件给所有收件人
+                        success = email_service.send_to_all_recipients_with_files(
+                            signals=signals_for_notification,
+                            chart_files=chart_paths
+                        )
+
+                        if success:
+                            console.print(f"\n📧 邮件通知已发送 ({len(signals_for_notification)} 个信号)")
+                        else:
+                            console.print(f"\n📭 邮件发送失败")
+
+                        # 自动清理临时文件
+                        if chart_paths:
+                            chart_generator.cleanup_chart_files(chart_paths)
+                            console.print(f"🗑️ 已清理 {len(chart_paths)} 个临时文件")
+                    else:
+                        console.print(f"\n📪 邮件服务未配置")
+
+                except Exception as e:
+                    console.print(f"\n⚠️ 邮件发送异常: {e}")
+
+        # 7. 操作建议
+        console.print(f"\n💡 [bold yellow]操作建议[/]")
+        if analysis_results and actionable_symbols:
+            top_symbol = actionable_symbols[0]['symbol']
+            console.print(f"🎯 重点关注 {top_symbol} (信号最强)")
+        console.print(f"📊 python main.py sync  # 查看交易统计")
+
+    except Exception as e:
+        console.print(f"❌ 分析失败: {e}")
+        import traceback
+        logger.error(f"技术分析错误: {traceback.format_exc()}")
+
+
+def _display_analysis_summary(console, symbol, current_price, price_change,
+                            overall_signal, rsi_signal, fib_signals, signals):
+    """显示友好的技术分析摘要"""
+
+    # 价格变化颜色
+    change_color = "green" if price_change >= 0 else "red"
+    change_symbol = "+" if price_change >= 0 else ""
+
+    # 信号颜色
+    signal_color = "green" if overall_signal == "BUY" else "red" if overall_signal == "SELL" else "yellow"
+
+    console.print(f"\n📈 [bold cyan]{symbol}[/] 技术分析结果")
+    console.print("=" * 50)
+
+    # 基本信息
+    console.print(f"💰 当前价格: [bold white]{current_price:.6f} USDT[/]")
+    console.print(f"📊 24h变化: [{change_color}]{change_symbol}{price_change:+.2f}%[/]")
+    console.print(f"🎯 综合信号: [{signal_color}]{overall_signal}[/]")
+
+    # RSI分析
+    if rsi_signal:
+        rsi_desc = _get_rsi_description(rsi_signal)
+        console.print(f"📊 RSI(14): {rsi_desc}")
+
+    # 斐波那契分析
+    if fib_signals:
+        console.print(f"📐 斐波那契分析:")
+        high_conf_fibs = [f for f in fib_signals if f.confidence >= 0.6]
+        if high_conf_fibs:
+            for fib in high_conf_fibs[:2]:  # 显示前2个高置信度信号
+                level_desc = _get_fib_level_description(fib)
+                console.print(f"   • {level_desc}")
+        else:
+            console.print(f"   • 未发现强力支撑阻力位")
+
+    # 交易建议
+    if overall_signal != "NEUTRAL":
+        suggestion = _get_trading_suggestion(overall_signal, current_price, rsi_signal, fib_signals)
+        console.print(f"💡 [bold yellow]交易建议[/]: {suggestion}")
+
+    console.print("-" * 50)
+
+
+def _get_rsi_description(rsi_signal):
+    """获取RSI描述"""
+    if hasattr(rsi_signal, 'rsi_value'):
+        rsi_val = rsi_signal.rsi_value
+        if rsi_val >= 70:
+            return f"超买区域 ({rsi_val:.1f}) - 警惕回调"
+        elif rsi_val <= 30:
+            return f"超卖区域 ({rsi_val:.1f}) - 关注反弹"
+        elif rsi_val >= 60:
+            return f"强势区域 ({rsi_val:.1f}) - 趋势向上"
+        elif rsi_val <= 40:
+            return f"弱势区域 ({rsi_val:.1f}) - 趋势向下"
+        else:
+            return f"中性区域 ({rsi_val:.1f}) - 震荡整理"
+    return f"{rsi_signal.signal_type} 信号"
+
+
+def _get_fib_level_description(fib_signal):
+    """获取斐波那契水平描述"""
+    if hasattr(fib_signal, 'level') and hasattr(fib_signal, 'price'):
+        level_name = f"{fib_signal.level:.1f}%" if hasattr(fib_signal, 'level') else "关键"
+        price = fib_signal.price
+        signal_type = "支撑" if fib_signal.signal_type == "BUY" else "阻力"
+        return f"{level_name} {signal_type}位: {price:.6f} (置信度: {fib_signal.confidence*100:.0f}%)"
+    return f"{fib_signal.signal_type} 信号 @ {fib_signal.price:.6f}"
+
+
+def _get_trading_suggestion(signal, price, rsi_signal, fib_signals):
+    """获取交易建议"""
+    if signal == "BUY":
+        return f"建议逢低买入，关注支撑位附近机会"
+    elif signal == "SELL":
+        return f"建议逢高减仓，关注阻力位附近压力"
+    else:
+        return f"建议观望，等待明确方向信号"
+
+
 
 if __name__ == '__main__':
-    cli() 
+    cli()

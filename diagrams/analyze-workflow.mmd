@@ -1,85 +1,103 @@
 flowchart TD
-    A[用户执行 python main.py technical run] --> B{检查配置文件}
+    A[用户执行 python main.py analyze] --> B{检查系统状态}
 
-    B -->|配置存在| C[读取技术分析配置]
-    B -->|配置不存在| D[显示配置缺失提示]
+    B -->|配置正常| C[读取技术分析配置]
+    B -->|配置缺失| D[显示配置缺失提示]
 
     C --> E[获取信号引擎实例]
     E --> F[加载监控的交易对列表]
 
     F --> G{有监控交易对}
-    G -->|有交易对| H[遍历交易对进行分析]
-    G -->|无交易对| I[使用默认交易对列表]
+    G -->|有交易对| H[批量获取K线数据]
+    G -->|无交易对| I[显示监控配置提示]
 
-    H --> J[单个交易对技术分析]
-    I --> J
+    H --> J{数据获取成功}
+    J -->|成功| K[批量技术分析执行]
+    J -->|失败| L[显示数据获取错误]
 
-    J --> K[获取K线数据]
-    K --> L{数据获取成功}
+    %% 核心分析流程 - 第六版改进
+    K --> M[RSI分析器]
+    K --> N[斐波那契分析器]
 
-    L -->|成功| M[计算技术指标]
-    L -->|失败| N[记录错误,继续下一个]
+    M --> O[计算14期RSI指标]
+    N --> P[识别关键高低点]
 
-    M --> O[RSI分析]
-    O --> P[MACD分析]
-    P --> Q[斐波那契分析]
-    Q --> R[布林带分析]
+    O --> Q[RSI信号评估]
+    P --> R[回调/扩展分析]
 
-    R --> S[综合评估信号强度]
-    S --> T{发现交易信号}
+    Q --> S[RSI超买超卖信号]
+    R --> T[斐波那契支撑阻力信号]
 
-    T -->|发现信号| U[记录信号详情]
-    T -->|无信号| V[继续下一个交易对]
+    %% 信号整合
+    S --> U[信号整合引擎]
+    T --> U
 
-    U --> W[格式化信号信息]
-    W --> X[添加到信号汇总]
+    U --> V[计算信号置信度]
+    V --> W[综合信号评估]
 
-    N --> Y{还有更多交易对}
-    V --> Y
-    X --> Y
+    W --> X{发现交易信号}
+    X -->|发现信号| Y[格式化分析结果]
+    X -->|无信号| Z[显示市场中性状态]
 
-    Y -->|是| J
-    Y -->|否| Z[分析完成统计]
+    %% 结果展示与通知
+    Y --> AA[显示市场概览]
+    AA --> BB[显示重点关注币种]
+    BB --> CC[显示市场情绪分析]
 
-    Z --> AA{发现任何信号}
-    AA -->|发现信号| BB[准备邮件通知]
-    AA -->|无信号| CC[显示无信号提示]
+    CC --> DD{邮件通知配置}
+    DD -->|已配置| EE[生成专业图表]
+    DD -->|未配置| FF[仅控制台输出]
 
-    BB --> DD[构建邮件内容]
-    DD --> EE[发送邮件通知]
+    EE --> GG[生成TradingView风格图表]
+    GG --> HH[发送邮件通知]
 
-    EE --> FF{邮件发送成功}
-    FF -->|成功| GG[显示发送成功信息]
-    FF -->|失败| HH[显示发送失败信息]
+    HH --> II{邮件发送成功}
+    II -->|成功| JJ[显示邮件发送成功]
+    II -->|失败| KK[显示邮件发送失败]
 
-    CC --> II[显示分析结果摘要]
-    GG --> II
-    HH --> II
+    %% 清理和结束
+    FF --> LL[显示操作建议]
+    JJ --> LL
+    KK --> LL
+    Z --> LL
 
-    D --> JJ[显示配置指导]
-    II --> KK[记录分析日志]
-    JJ --> KK
+    LL --> MM[清理临时文件]
+    MM --> NN[记录分析日志]
+    NN --> OO[正常结束]
 
-    KK --> LL[更新分析状态]
-    LL --> MM[正常结束]
+    %% 错误处理
+    D --> PP[显示配置指导]
+    I --> QQ[显示监控配置指导]
+    L --> RR[显示数据源检查建议]
 
+    PP --> NN
+    QQ --> NN
+    RR --> NN
+
+    %% 样式定义
     style A fill:#e1f5fe
     style C fill:#c8e6c9
+    style K fill:#4fc3f7
     style M fill:#4fc3f7
-    style O fill:#4fc3f7
-    style P fill:#4fc3f7
-    style Q fill:#4fc3f7
-    style R fill:#4fc3f7
-    style L fill:#ffecb3
-    style T fill:#ffecb3
-    style AA fill:#ffecb3
-    style FF fill:#ffecb3
+    style N fill:#4fc3f7
+    style O fill:#81c784
+    style P fill:#81c784
+    style Q fill:#81c784
+    style R fill:#81c784
+    style J fill:#ffecb3
+    style X fill:#ffecb3
+    style DD fill:#ffecb3
+    style II fill:#ffecb3
     style D fill:#ffcdd2
-    style N fill:#ffcdd2
-    style HH fill:#ffcdd2
+    style L fill:#ffcdd2
+    style KK fill:#ffcdd2
 
-    classDef analysisModule fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
-    class O,P,Q,R,S,U,W,X analysisModule
+    %% 类定义
+    classDef analysisCore fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    class M,N,O,P,Q,R,S,T,U,V,W analysisCore
 
-    classDef notificationModule fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    class BB,DD,EE,GG notificationModule
+    classDef resultDisplay fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    class Y,AA,BB,CC resultDisplay
+
+    classDef notificationModule fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    class EE,GG,HH,JJ notificationModule
