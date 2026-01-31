@@ -552,17 +552,27 @@ class TradingJournalManager:
 
             new_count = 0
             duplicate_count = 0
-            
+            duplicate_records = []
+
             for trade in trades:
                 # 转换为旧系统格式
                 trade_dict = trade.to_dict()
                 trade_dict['data_source'] = f'{self.exchange_name}_api_v2'
-                
+
                 success = database_setup.insert_trade(trade_dict)
                 if success:
                     new_count += 1
                 else:
                     duplicate_count += 1
+                    duplicate_records.append(f"{trade_dict['utc_time']} {trade_dict['symbol']} {trade_dict['side']} {trade_dict['quantity']}@{trade_dict['price']}")
+
+            # 输出去重统计
+            if duplicate_count > 0:
+                print(f"数据访问层: 尝试插入 {new_count + duplicate_count} 条记录，成功插入 {new_count} 条新记录，忽略 {duplicate_count} 条重复记录:")
+                for rec in duplicate_records:
+                    print(f"  ⏭️  {rec}")
+            elif new_count > 0:
+                print(f"数据访问层: 成功插入 {new_count} 条新记录。")
             
             # 5. 计算并更新PnL
             if new_count > 0:

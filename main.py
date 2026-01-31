@@ -468,45 +468,39 @@ def scheduler_config():
 # ============================================================================
 
 @cli.command()
-@click.option('--days', default=None, type=int, help='同步最近N天的数据 (默认: 智能增量同步)')
-def sync(days):
+def sync():
     """
     📊 数据同步和统计报告
 
-    智能同步最新交易数据并生成包含详细交易明细的完整统计报告
+    智能增量同步：自动从上次同步时间开始，无需指定天数
     """
     console = Console()
 
     try:
-        # 步骤1: 智能计算同步天数
+        # 步骤1: 智能计算同步天数（基于上次同步时间）
         from core import database as database_setup
         from datetime import timedelta
 
-        if days is None:
-            # 智能同步: 从上次同步时间开始
-            try:
-                last_sync = database_setup.get_last_sync_timestamp()
-                if last_sync:
-                    # 计算增量同步天数
-                    last_sync_time = datetime.fromisoformat(last_sync)
-                    time_diff = datetime.now() - last_sync_time
-                    actual_days = int(time_diff.total_seconds() / 86400) + 1
+        # 智能同步: 从上次同步时间开始
+        try:
+            last_sync = database_setup.get_last_sync_timestamp()
+            if last_sync:
+                # 计算增量同步天数
+                last_sync_time = datetime.fromisoformat(last_sync)
+                time_diff = datetime.now() - last_sync_time
+                actual_days = int(time_diff.total_seconds() / 86400) + 1
 
-                    sync_days = actual_days
-                    console.print(f"🧠 智能同步模式: 从上次同步时间 ({last_sync_time.strftime('%Y-%m-%d %H:%M')}) 开始")
-                    console.print(f"📅 本次同步范围: {sync_days} 天")
-                else:
-                    # 首次同步，使用30天
-                    sync_days = 30
-                    console.print("🆕 首次同步模式: 获取最近30天数据")
-            except Exception as e:
-                # 如果获取同步时间戳失败，使用默认7天
-                sync_days = 7
-                console.print(f"⚠️  无法获取上次同步时间 ({e})，使用默认7天同步")
-        else:
-            # 用户指定天数
-            sync_days = days
-            console.print(f"🎯 手动同步模式: 最近 {sync_days} 天")
+                sync_days = actual_days
+                console.print(f"📅 上次同步时间: {last_sync_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                console.print(f"🧠 智能增量同步: 同步最近 {sync_days} 天的数据")
+            else:
+                # 首次同步，使用30天
+                sync_days = 30
+                console.print("🆕 首次同步模式: 获取最近30天数据")
+        except Exception as e:
+            # 如果获取同步时间戳失败，使用默认7天
+            sync_days = 7
+            console.print(f"⚠️  无法获取上次同步时间 ({e})，使用默认7天同步")
 
         # 步骤2: 数据同步
         console.print("🔄 [bold cyan]正在同步最新交易数据...[/]")
