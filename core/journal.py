@@ -574,7 +574,43 @@ class TradingJournalManager:
             elif new_count > 0:
                 print(f"数据访问层: 成功插入 {new_count} 条新记录。")
             
-            # 5. 计算并更新PnL
+            # 5. 同步划转记录（资金账户 -> 现货账户）
+            transfer_count = 0
+            try:
+                transfers = client.fetch_transfers(transfer_type='FUNDING_MAIN', days=days)
+                if transfers:
+                    print(f"正在同步 {len(transfers)} 条划转记录...")
+                    for transfer in transfers:
+                        # 稳定币划转视为成本（1:1），存入trades表
+                        asset = transfer['asset']
+                        amount = transfer['amount']
+                        timestamp = transfer['timestamp']
+
+                        # 构造交易记录（划转入视为BUY，成本=数量）
+                        # 稳定币对应的交易对
+                        symbol = f"{asset}USDT" if asset not in ['USDT', 'USDC', 'FDUSD', 'BUSD'] else 'FDUSDUSDT'
+
+                        trade_dict = {
+                            'utc_time': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                            'symbol': symbol,
+                            'side': 'TRANSFER_IN',
+                            'price': 1.0,  # 稳定币1:1
+                            'quantity': float(amount),
+                            'quote_quantity': float(amount),
+                            'fee': 0.0,
+                            'fee_currency': 'USDT',
+                            'data_source': f'{self.exchange_name}_transfer'
+                        }
+
+                        if database_setup.insert_trade(trade_dict):
+                            transfer_count += 1
+
+                    if transfer_count > 0:
+                        print(f"数据访问层: 成功插入 {transfer_count} 条划转记录。")
+            except Exception as e:
+                print(f"⚠️  划转记录同步跳过: {e}")
+
+            # 6. 计算并更新PnL
             if new_count > 0:
                 print("正在计算盈亏...")
                 update_all_pnl()

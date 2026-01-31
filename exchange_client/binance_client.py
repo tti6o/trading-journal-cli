@@ -8,7 +8,7 @@ import ccxt
 import time
 import logging
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
 
@@ -704,4 +704,70 @@ class BinanceClient(ExchangeClient):
             raise
 
     def __str__(self) -> str:
-        return f"BinanceClient(connected={self.is_connected}, sandbox={self.sandbox})" 
+        return f"BinanceClient(connected={self.is_connected}, sandbox={self.sandbox})"
+
+    def fetch_transfers(
+        self,
+        transfer_type: str = 'FUNDING_MAIN',
+        since: Optional[datetime] = None,
+        days: Optional[int] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        获取账户划转记录（资金账户 <-> 现货账户）
+
+        Args:
+            transfer_type: 划转类型
+                - 'FUNDING_MAIN': 资金账户 -> 现货账户（入金）
+                - 'MAIN_FUNDING': 现货账户 -> 资金账户（出金）
+            since: 开始时间
+            days: 同步最近N天（与since二选一）
+            limit: 记录限制
+
+        Returns:
+            划转记录列表
+        """
+        if not self.is_connected:
+            success, message = self.connect()
+            if not success:
+                raise ExchangeAPIError(f"无法连接到交易所: {message}")
+
+        try:
+            params = {
+                'type': transfer_type,
+                'size': limit
+            }
+
+            # 处理时间参数
+            if days and not since:
+                since = datetime.now() - timedelta(days=days)
+
+            if since:
+                params['startTime'] = int(since.timestamp() * 1000)
+
+            result = self.exchange.sapi_get_asset_transfer(params)
+            rows = result.get('rows', [])
+
+            transfers = []
+            for row in rows:
+                # 转换时间戳
+                timestamp = self._parse_timestamp(row['timestamp'])
+
+                transfers.append({
+                    'asset': row['asset'],
+                    'amount': Decimal(str(row['amount'])),
+                    'timestamp': timestamp,
+                    'type': transfer_type,
+                    'status': row.get('status', 'CONFIRMED'),
+                    'tran_id': row.get('tranId', '')
+                })
+
+            logger.info(f"获取到 {len(transfers)} 条划转记录 (类型: {transfer_type})")
+            return transfers
+
+        except ccxt.BaseError as e:
+            error_msg = str(e)
+            if '-3000' in error_msg or 'permission' in error_msg.lower():
+                logger.warning(f"划转API权限未开通: {e}")
+                return []
+            raise ExchangeAPIError(f"获取划转记录失败: {str(e)}") 
